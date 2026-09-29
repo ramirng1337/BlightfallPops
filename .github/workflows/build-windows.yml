@@ -1,0 +1,51 @@
+name: Build portable Windows overlay
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile the standalone EXE
+        working-directory: Blightpops-Overlay
+        shell: cmd
+        run: call "Build Once.cmd" --ci
+
+      - name: Check release version
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $version = [System.Reflection.AssemblyName]::GetAssemblyName((Resolve-Path Blightpops-Overlay/BlightfallPops.exe)).Version.ToString()
+          $tagVersion = '${{ github.ref_name }}' -replace '^[vV]', ''
+          if ($version -ne $tagVersion) { throw "EXE version $version does not match tag $tagVersion. Update VersionInfo.cs first." }
+
+      - name: Pack the public download
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist,portable -Force | Out-Null
+          Copy-Item Blightpops-Overlay/BlightfallPops.exe portable/
+          Copy-Item Blightpops-Overlay/README-Portable.txt portable/README.txt
+          Compress-Archive -Path portable/* -DestinationPath dist/BlightfallPops.zip -Force
+
+      - name: Save the ready-to-run download
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlightfallPops-Windows
+          path: dist/BlightfallPops.zip
+          if-no-files-found: error
+
+      - name: Publish when a version tag is pushed
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "${{ github.ref_name }}" "dist/BlightfallPops.zip" --title "Blightfall Pops ${{ github.ref_name }}" --generate-notes
