@@ -19,7 +19,7 @@ BLIGHTFALL POPS — NATIVE WINDOWS APP TEST BUILD
 
 CONTROLS
 The folder button changes logs; the circular arrow starts a fresh session.
-The top icon row reads Mini, Blood Beast, Options, Refresh, Folder, Lock,
+The top icon row reads Mini, Blood Beast, Options, Log reader, Refresh, Folder, Lock,
 Collapse, Minimize, Close from left to right. Mini switches to two-line cards:
 event icon, name, hit count and total on the first line; DP/VP or CB/BiL icon
 and damage plus the Scythe or Blightfall status icon on the second. Click a
@@ -51,6 +51,11 @@ the active game window. Keyboard movement should then continue while you use
 the overlay mouse controls. The click belongs to the overlay, not the game;
 mouse look is unavailable while the cursor is over the overlay. Turn this
 setting off to type into the overlay's numeric option boxes. It is saved.
+The log-page icon pauses/resumes the overlay's reader. A green check shows the
+file grew recently, gray means idle or missing (not proof that /combatlog is
+off), and red pause means the overlay reader is off. Resuming reads missed
+lines. This control does not toggle WoW's /combatlog command. Its setting is
+saved across launches.
 The Soul Reaper checkbox shows the Soul Reaper icon to the left of Festering
 Scythe on Blightfall cards, including mini cards. It tracks your Soul Reaper
 enemy debuff (spell ID 1241521) for eight seconds after application or refresh;
@@ -73,7 +78,7 @@ FOR PUBLIC DOWNLOADS
 Upload the repository with its .github/workflows/build-windows.yml file to
 GitHub. In the Actions tab, "Build portable Windows overlay" can build a
 ready-to-run ZIP manually. For a patch, change the version in VersionInfo.cs,
-commit and push the changes, then push a matching version tag such as v1.0.0.1.
+commit and push the changes, then push a matching version tag such as v1.0.0.4.
 The workflow rejects a tag that differs from the compiled EXE and publishes
 BlightfallPops.zip as a public GitHub Release asset. The running overlay checks
 the latest release on startup and from the cogwheel's "Check for updates"

@@ -25,7 +25,7 @@ namespace BlightfallPopsDesktop {
     }
     internal sealed class Settings {
         public int Width=500, Height=390, X=int.MinValue, Y=int.MinValue, WindowMs=1200, IconSize=26, TextSize=10;
-        public bool Locked=false, AlwaysOnTop=true, KeepGameFocus=false, ShowBeasts=true, ShowBeastBlightfall=true, ShowSoulReaper=false, CompactNumbers=true, Collapsed=false, GroupByEventType=false, MiniCards=false;
+        public bool Locked=false, AlwaysOnTop=true, KeepGameFocus=false, WatchLog=true, ShowBeasts=true, ShowBeastBlightfall=true, ShowSoulReaper=false, CompactNumbers=true, Collapsed=false, GroupByEventType=false, MiniCards=false;
         public string Log="";
         public static readonly string DirectoryPath=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"BlightfallPopsDesktop");
         public static Settings Load() {
@@ -38,7 +38,7 @@ namespace BlightfallPopsDesktop {
                 else if (int.TryParse(value,out n)) {
                     switch(key) { case "Width": s.Width=n;break;case "Height":s.Height=n;break;case "X":s.X=n;break;case "Y":s.Y=n;break;case "WindowMs":s.WindowMs=n;break;case "IconSize":s.IconSize=n;break;case "TextSize":s.TextSize=n;break; }
                 } else if(bool.TryParse(value,out b)) {
-                    switch(key) { case "Locked":s.Locked=b;break;case "AlwaysOnTop":s.AlwaysOnTop=b;break;case "KeepGameFocus":s.KeepGameFocus=b;break;case "ShowBeasts":s.ShowBeasts=b;break;case "ShowBeastBlightfall":s.ShowBeastBlightfall=b;break;case "ShowSoulReaper":s.ShowSoulReaper=b;break;case "CompactNumbers":s.CompactNumbers=b;break;case "Collapsed":s.Collapsed=b;break;case "GroupByEventType":s.GroupByEventType=b;break;case "MiniCards":s.MiniCards=b;break; }
+                    switch(key) { case "Locked":s.Locked=b;break;case "AlwaysOnTop":s.AlwaysOnTop=b;break;case "KeepGameFocus":s.KeepGameFocus=b;break;case "WatchLog":s.WatchLog=b;break;case "ShowBeasts":s.ShowBeasts=b;break;case "ShowBeastBlightfall":s.ShowBeastBlightfall=b;break;case "ShowSoulReaper":s.ShowSoulReaper=b;break;case "CompactNumbers":s.CompactNumbers=b;break;case "Collapsed":s.Collapsed=b;break;case "GroupByEventType":s.GroupByEventType=b;break;case "MiniCards":s.MiniCards=b;break; }
                 }
             }
             s.Width=Math.Max(340,Math.Min(2000,s.Width));s.Height=Math.Max(70,Math.Min(1500,s.Height));
@@ -49,7 +49,7 @@ namespace BlightfallPopsDesktop {
         public void Save() {
             Directory.CreateDirectory(DirectoryPath);
             var lines=new [] { "Log="+Log,"Width="+Width,"Height="+Height,"X="+X,"Y="+Y,"WindowMs="+WindowMs,
-                "IconSize="+IconSize,"TextSize="+TextSize,"Locked="+Locked,"AlwaysOnTop="+AlwaysOnTop,"KeepGameFocus="+KeepGameFocus,"ShowBeasts="+ShowBeasts,
+                "IconSize="+IconSize,"TextSize="+TextSize,"Locked="+Locked,"AlwaysOnTop="+AlwaysOnTop,"KeepGameFocus="+KeepGameFocus,"WatchLog="+WatchLog,"ShowBeasts="+ShowBeasts,
                 "ShowBeastBlightfall="+ShowBeastBlightfall,"ShowSoulReaper="+ShowSoulReaper,"CompactNumbers="+CompactNumbers,"Collapsed="+Collapsed,
                 "GroupByEventType="+GroupByEventType,"MiniCards="+MiniCards };
             File.WriteAllLines(Path.Combine(DirectoryPath,"settings.txt"),lines,Encoding.UTF8);
@@ -204,8 +204,10 @@ namespace BlightfallPopsDesktop {
         private readonly Timer poll=new Timer();
         private readonly ToolTip toolTip=new ToolTip();
         private bool dirty;
-        private Button lockButton,beastButton,collapseButton,miniButton,updateButton;
+        private Button lockButton,beastButton,collapseButton,miniButton,updateButton,logButton;
         private bool checkingUpdate,installingUpdate;
+        private DateTime lastLogGrowthUtc=DateTime.MinValue;
+        private string logButtonState="";
         private readonly bool framed;
         private Image artwork;
         private readonly Dictionary<string,Image> spellIcons=new Dictionary<string,Image>();
@@ -263,6 +265,13 @@ namespace BlightfallPopsDesktop {
             lockButton.Paint+=PaintLockButton;
             DrawToolbarIcon(AddAction(actions,"","Choose combat log",dim,delegate {ChooseLog();}),"folder");
             DrawToolbarIcon(AddAction(actions,"","New session",dim,delegate {ResetSession();}),"refresh");
+            logButton=AddAction(actions,"","Pause overlay log reading",dim,delegate {
+                settings.WatchLog=!settings.WatchLog;
+                if(!settings.WatchLog){tracker.Finish();status.Text="Overlay log reading paused";}
+                else status.Text="Watching "+Path.GetFileName(settings.Log);
+                UpdateLogButton();Save();
+            });
+            logButton.Paint+=PaintLogButton;
             DrawToolbarIcon(AddAction(actions,"","Options",dim,delegate {ToggleOptions();}),"options");
             // RightToLeft flow places the last added control at the far left.
             beastButton=AddAction(actions,"","Show or hide Blood Beast",red,delegate {settings.ShowBeasts=!settings.ShowBeasts;ApplyBeastButton();RefreshCards();Save();});
@@ -299,10 +308,16 @@ namespace BlightfallPopsDesktop {
             };Move+=delegate {if(Visible&&WindowState==FormWindowState.Normal)Save();};
             FormClosing+=delegate {Save();poll.Stop();toolTip.Dispose();if(artwork!=null)artwork.Dispose();foreach(var image in spellIcons.Values)image.Dispose();};
             tracker.WindowMs=settings.WindowMs;tracker.Changed+=delegate {dirty=true;};
-            poll.Interval=350;poll.Tick+=delegate {try {if(settings.Log!=""){tracker.Tick(settings.Log);status.Text="Tracking "+(tracker.Player==""?Path.GetFileName(settings.Log):tracker.Player);}}
+            poll.Interval=350;poll.Tick+=delegate {try {if(settings.WatchLog&&settings.Log!=""){
+                    long before=tracker.Position;
+                    tracker.Tick(settings.Log);
+                    if(tracker.Position>before)lastLogGrowthUtc=DateTime.UtcNow;
+                    status.Text="Tracking "+(tracker.Player==""?Path.GetFileName(settings.Log):tracker.Player);
+                }}
                 catch(Exception ex) {status.Text="Log error: "+ex.Message;}
+                UpdateLogButton();
                 if(dirty){dirty=false;RefreshCards(true);}};
-            ApplyCollapsed();ApplyLock();ApplyBeastButton();LayoutWindow();
+            ApplyCollapsed();ApplyLock();ApplyBeastButton();UpdateLogButton();LayoutWindow();
             Shown+=delegate {if(!File.Exists(settings.Log))ChooseLog();else LoadLog(settings.Log);poll.Start();CheckForUpdates(true);};
         }
         private Button AddAction(Control parent,string glyph,string hint,Color color,Action click) {
@@ -359,6 +374,30 @@ namespace BlightfallPopsDesktop {
                 e.Graphics.DrawRectangle(pen,7,14,14,10);
             }
             using(var brush=new SolidBrush(color))e.Graphics.FillEllipse(brush,13,18,3,3);
+        }
+        private void UpdateLogButton(){
+            if(logButton==null)return;
+            string state=!settings.WatchLog?"paused":string.IsNullOrEmpty(settings.Log)||!File.Exists(settings.Log)?"missing":
+                (DateTime.UtcNow-lastLogGrowthUtc).TotalSeconds<10?"recent":"idle";
+            if(state==logButtonState)return;
+            logButtonState=state;
+            string hint=state=="paused"?"Overlay log reading paused. Click to resume (missed lines will be read). WoW /combatlog is separate.":
+                state=="missing"?"No combat log file selected or file missing. Click to pause overlay reading.":
+                state=="recent"?"Combat log file grew recently. Click to pause overlay reading.":
+                "Waiting for new log lines. This cannot tell if WoW /combatlog is off. Click to pause overlay reading.";
+            toolTip.SetToolTip(logButton,hint);logButton.Invalidate();
+        }
+        private void PaintLogButton(object sender,PaintEventArgs e){
+            e.Graphics.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            Color color=logButtonState=="recent"?green:logButtonState=="paused"?red:dim;
+            using(var pen=new Pen(color,2.2f)){
+                e.Graphics.DrawRectangle(pen,7,5,17,20);
+                if(logButtonState=="paused"){
+                    e.Graphics.DrawLine(pen,12,11,12,19);e.Graphics.DrawLine(pen,19,11,19,19);
+                }else if(logButtonState=="recent"){
+                    e.Graphics.DrawLine(pen,10,15,14,19);e.Graphics.DrawLine(pen,14,19,22,10);
+                }else e.Graphics.DrawLine(pen,11,16,20,16);
+            }
         }
         private void ApplyBeastButton(){
             beastButton.FlatAppearance.BorderSize=0;
@@ -533,12 +572,15 @@ namespace BlightfallPopsDesktop {
             try{settings.Save();}catch{}}
         private void ChooseLog(){using(var dialog=new OpenFileDialog{Title="Select the active WoWCombatLog.txt",Filter="Combat logs (*.txt)|*.txt|All files (*.*)|*.*"}){
             if(File.Exists(settings.Log))dialog.FileName=settings.Log;
-            if(dialog.ShowDialog(this)==DialogResult.OK){settings.Log=dialog.FileName;LoadLog(settings.Log);Save();}}}
+            if(dialog.ShowDialog(this)==DialogResult.OK){settings.Log=dialog.FileName;LoadLog(settings.Log);UpdateLogButton();Save();}}}
         private void LoadLog(string file){try{tracker.Reset();scrollPixels=0;var size=new FileInfo(file).Length;
-            tracker.Position=Math.Max(0,size-8388608L);tracker.SkipFirstLine=tracker.Position>0;
-            tracker.Tick(file);dirty=false;RefreshCards();
+            lastLogGrowthUtc=DateTime.MinValue;
+            tracker.Position=settings.WatchLog?Math.Max(0,size-8388608L):size;
+            tracker.SkipFirstLine=settings.WatchLog&&tracker.Position>0;
+            if(settings.WatchLog)tracker.Tick(file);
+            dirty=false;RefreshCards();
             ScrollTo(Math.Max(0,totalContentHeight-cards.ClientSize.Height));
-            status.Text="Watching "+Path.GetFileName(file);}
+            status.Text=settings.WatchLog?"Watching "+Path.GetFileName(file):"Overlay log reading paused";UpdateLogButton();}
             catch(Exception ex){status.Text="Cannot open log: "+ex.Message;}}
         private void ResetSession(){try{tracker.Reset(File.Exists(settings.Log)?new FileInfo(settings.Log).Length:0);tracker.SkipFirstLine=false;scrollPixels=0;
             dirty=false;RefreshCards();status.Text="New session — waiting for combat";}catch(Exception ex){status.Text=ex.Message;}}

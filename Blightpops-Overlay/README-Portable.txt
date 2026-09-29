@@ -9,6 +9,13 @@ BLIGHTFALL POPS — WINDOWS OVERLAY
 The folder button lets you change combat logs. The refresh button starts a new
 session. The gear opens display options; window size and settings are saved
 under %LOCALAPPDATA%\BlightfallPopsDesktop for each Windows user.
+The small log-page icon in the toolbar pauses or resumes the overlay's log
+reader. A green check means the selected file grew recently; a gray line means
+no recent lines (which can simply mean you are between fights); red pause means
+the overlay is paused. Pausing keeps your current cards and resuming reads the
+missed lines. This button does not switch WoW's /combatlog command on or off:
+use /combatlog in game for that. The overlay cannot reliably identify WoW's
+logging state from an idle file. The reader setting is saved between launches.
 "Overlay stays on top" is enabled by default for gameplay on the same
 screen. Switch it off in the gear for OBS capture on a second monitor. Keep
 the window open: minimizing may stop OBS window capture.
@@ -30,5 +37,5 @@ the spell art and character icon; no other files are needed to run it.
 
 Source code and more detailed usage notes are in the public project repository.
 For each new release, update VersionInfo.cs to match the GitHub tag (for example,
-1.0.0.1 for v1.0.0.1), run Build Once.cmd, and attach a BlightfallPops.zip that
+1.0.0.4 for v1.0.0.4), run Build Once.cmd, and attach a BlightfallPops.zip that
 contains the newly built BlightfallPops.exe. This keeps update checks accurate.
