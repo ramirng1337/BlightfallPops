@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
+using System.Threading.Tasks;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
@@ -24,7 +25,7 @@ namespace BlightfallPopsDesktop {
     }
     internal sealed class Settings {
         public int Width=500, Height=390, X=int.MinValue, Y=int.MinValue, WindowMs=1200, IconSize=26, TextSize=10;
-        public bool Locked=false, AlwaysOnTop=true, ShowBeasts=true, ShowBeastBlightfall=true, ShowSoulReaper=false, CompactNumbers=true, Collapsed=false, GroupByEventType=false, MiniCards=false;
+        public bool Locked=false, AlwaysOnTop=true, KeepGameFocus=false, ShowBeasts=true, ShowBeastBlightfall=true, ShowSoulReaper=false, CompactNumbers=true, Collapsed=false, GroupByEventType=false, MiniCards=false;
         public string Log="";
         public static readonly string DirectoryPath=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"BlightfallPopsDesktop");
         public static Settings Load() {
@@ -37,10 +38,10 @@ namespace BlightfallPopsDesktop {
                 else if (int.TryParse(value,out n)) {
                     switch(key) { case "Width": s.Width=n;break;case "Height":s.Height=n;break;case "X":s.X=n;break;case "Y":s.Y=n;break;case "WindowMs":s.WindowMs=n;break;case "IconSize":s.IconSize=n;break;case "TextSize":s.TextSize=n;break; }
                 } else if(bool.TryParse(value,out b)) {
-                    switch(key) { case "Locked":s.Locked=b;break;case "AlwaysOnTop":s.AlwaysOnTop=b;break;case "ShowBeasts":s.ShowBeasts=b;break;case "ShowBeastBlightfall":s.ShowBeastBlightfall=b;break;case "ShowSoulReaper":s.ShowSoulReaper=b;break;case "CompactNumbers":s.CompactNumbers=b;break;case "Collapsed":s.Collapsed=b;break;case "GroupByEventType":s.GroupByEventType=b;break;case "MiniCards":s.MiniCards=b;break; }
+                    switch(key) { case "Locked":s.Locked=b;break;case "AlwaysOnTop":s.AlwaysOnTop=b;break;case "KeepGameFocus":s.KeepGameFocus=b;break;case "ShowBeasts":s.ShowBeasts=b;break;case "ShowBeastBlightfall":s.ShowBeastBlightfall=b;break;case "ShowSoulReaper":s.ShowSoulReaper=b;break;case "CompactNumbers":s.CompactNumbers=b;break;case "Collapsed":s.Collapsed=b;break;case "GroupByEventType":s.GroupByEventType=b;break;case "MiniCards":s.MiniCards=b;break; }
                 }
             }
-            s.Width=Math.Max(340,Math.Min(2000,s.Width));s.Height=Math.Max(230,Math.Min(1500,s.Height));
+            s.Width=Math.Max(340,Math.Min(2000,s.Width));s.Height=Math.Max(70,Math.Min(1500,s.Height));
             s.WindowMs=Math.Max(500,Math.Min(2000,s.WindowMs));
             s.IconSize=Math.Max(18,Math.Min(40,s.IconSize));s.TextSize=Math.Max(8,Math.Min(18,s.TextSize));
             return s;
@@ -48,7 +49,7 @@ namespace BlightfallPopsDesktop {
         public void Save() {
             Directory.CreateDirectory(DirectoryPath);
             var lines=new [] { "Log="+Log,"Width="+Width,"Height="+Height,"X="+X,"Y="+Y,"WindowMs="+WindowMs,
-                "IconSize="+IconSize,"TextSize="+TextSize,"Locked="+Locked,"AlwaysOnTop="+AlwaysOnTop,"ShowBeasts="+ShowBeasts,
+                "IconSize="+IconSize,"TextSize="+TextSize,"Locked="+Locked,"AlwaysOnTop="+AlwaysOnTop,"KeepGameFocus="+KeepGameFocus,"ShowBeasts="+ShowBeasts,
                 "ShowBeastBlightfall="+ShowBeastBlightfall,"ShowSoulReaper="+ShowSoulReaper,"CompactNumbers="+CompactNumbers,"Collapsed="+Collapsed,
                 "GroupByEventType="+GroupByEventType,"MiniCards="+MiniCards };
             File.WriteAllLines(Path.Combine(DirectoryPath,"settings.txt"),lines,Encoding.UTF8);
@@ -203,7 +204,8 @@ namespace BlightfallPopsDesktop {
         private readonly Timer poll=new Timer();
         private readonly ToolTip toolTip=new ToolTip();
         private bool dirty;
-        private Button lockButton,beastButton,collapseButton,miniButton;
+        private Button lockButton,beastButton,collapseButton,miniButton,updateButton;
+        private bool checkingUpdate,installingUpdate;
         private readonly bool framed;
         private Image artwork;
         private readonly Dictionary<string,Image> spellIcons=new Dictionary<string,Image>();
@@ -212,13 +214,30 @@ namespace BlightfallPopsDesktop {
         private Point dragOrigin;
         private int scrollPixels,totalContentHeight;
         private bool scrollDragging;
+        private int compactHeightBeforeOptions;
+        private bool AutoMiniCards {get{return ClientSize.Height-bar.Height<155;}}
+        private bool ShowMiniCards {get{return settings.MiniCards||AutoMiniCards;}}
         private readonly Color background=Color.FromArgb(18,20,24),rowColor=Color.FromArgb(34,38,44),dim=Color.FromArgb(178,183,183);
         private static readonly Color green=Color.FromArgb(134,218,130),red=Color.FromArgb(230,87,83);
+        private const int NoActivateStyle=0x08000000,AppWindowStyle=0x00040000;
+        protected override CreateParams CreateParams {
+            get {
+                var parameters=base.CreateParams;
+                if(settings!=null&&settings.KeepGameFocus)parameters.ExStyle|=NoActivateStyle|AppWindowStyle;
+                return parameters;
+            }
+        }
+        protected override bool ShowWithoutActivation {get{return settings!=null&&settings.KeepGameFocus;}}
+        protected override void WndProc(ref Message message){
+            // Keep the click, but leave keyboard focus with WoW when this mode is enabled.
+            if(message.Msg==0x0021&&settings.KeepGameFocus){message.Result=(IntPtr)3;return;}
+            base.WndProc(ref message);
+        }
         public Overlay(bool useFrame) {
             framed=useFrame;
             LoadSpellIcons();
             if(framed)try {artwork=Image.FromFile(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"wraith-frame-dark-smooth.png"));}catch{}
-            MinimumSize=new Size(340,230);Size=new Size(settings.Width,settings.Height);
+            MinimumSize=new Size(340,settings.Collapsed?70:136);Size=new Size(settings.Width,settings.Height);
             StartPosition=FormStartPosition.CenterScreen;
             if(settings.X!=int.MinValue&&settings.Y!=int.MinValue) {
                 var requested=new Rectangle(settings.X,settings.Y,Width,Height);
@@ -244,7 +263,7 @@ namespace BlightfallPopsDesktop {
             lockButton.Paint+=PaintLockButton;
             DrawToolbarIcon(AddAction(actions,"","Choose combat log",dim,delegate {ChooseLog();}),"folder");
             DrawToolbarIcon(AddAction(actions,"","New session",dim,delegate {ResetSession();}),"refresh");
-            DrawToolbarIcon(AddAction(actions,"","Options",dim,delegate {options.Visible=!options.Visible;LayoutWindow();}),"options");
+            DrawToolbarIcon(AddAction(actions,"","Options",dim,delegate {ToggleOptions();}),"options");
             // RightToLeft flow places the last added control at the far left.
             beastButton=AddAction(actions,"","Show or hide Blood Beast",red,delegate {settings.ShowBeasts=!settings.ShowBeasts;ApplyBeastButton();RefreshCards();Save();});
             Image beastImage;if(spellIcons.TryGetValue("BB",out beastImage)){
@@ -252,6 +271,7 @@ namespace BlightfallPopsDesktop {
             }
             beastButton.Paint+=PaintBeastButton;
             miniButton=AddAction(actions,"","Toggle two-line mini cards",dim,delegate {
+                if(AutoMiniCards)return; // The compact window cannot fit full cards.
                 settings.MiniCards=!settings.MiniCards;scrollPixels=0;miniButton.Invalidate();RefreshCards();Save();
             });
             DrawToolbarIcon(miniButton,"mini");
@@ -262,7 +282,7 @@ namespace BlightfallPopsDesktop {
             scrollTrack.MouseMove+=delegate(object sender,MouseEventArgs e){if(scrollDragging)ScrollFromTrack(e.Y);};
             scrollTrack.MouseUp+=delegate {scrollDragging=false;scrollTrack.Capture=false;};
             scrollTrack.MouseWheel+=ScrollWheel;Controls.Add(scrollTrack);
-            options.Height=136;options.BackColor=Color.FromArgb(30,33,37);options.Visible=false;Controls.Add(options);
+            options.Height=175;options.BackColor=Color.FromArgb(30,33,37);options.Visible=false;Controls.Add(options);
             SetupOptions();
             grip.Size=new Size(18,18);grip.Anchor=AnchorStyles.Right|AnchorStyles.Bottom;
             grip.BackColor=Color.FromArgb(51,55,58);grip.Cursor=Cursors.SizeNWSE;
@@ -271,14 +291,19 @@ namespace BlightfallPopsDesktop {
             grip.MouseMove+=delegate {if(resizeStart.HasValue&&!settings.Locked){var cursor=MousePosition;Size=new Size(Math.Max(MinimumSize.Width,resizeOrigin.Width+cursor.X-resizeStart.Value.X),Math.Max(MinimumSize.Height,resizeOrigin.Height+cursor.Y-resizeStart.Value.Y));}};
             grip.MouseUp+=delegate {resizeStart=null;grip.Capture=false;Save();};
             Controls.Add(grip);grip.BringToFront();
-            Resize+=delegate {LayoutWindow();RefreshCards();};Move+=delegate {if(Visible&&WindowState==FormWindowState.Normal)Save();};
+            Resize+=delegate {
+                bool wasAtBottom=scrollPixels>=Math.Max(0,totalContentHeight-cards.ClientSize.Height)-2;
+                LayoutWindow();RefreshCards();miniButton.Invalidate();
+                if(wasAtBottom||ShowMiniCards&&cards.ClientSize.Height<=61)
+                    ScrollTo(Math.Max(0,totalContentHeight-cards.ClientSize.Height));
+            };Move+=delegate {if(Visible&&WindowState==FormWindowState.Normal)Save();};
             FormClosing+=delegate {Save();poll.Stop();toolTip.Dispose();if(artwork!=null)artwork.Dispose();foreach(var image in spellIcons.Values)image.Dispose();};
             tracker.WindowMs=settings.WindowMs;tracker.Changed+=delegate {dirty=true;};
             poll.Interval=350;poll.Tick+=delegate {try {if(settings.Log!=""){tracker.Tick(settings.Log);status.Text="Tracking "+(tracker.Player==""?Path.GetFileName(settings.Log):tracker.Player);}}
                 catch(Exception ex) {status.Text="Log error: "+ex.Message;}
-                if(dirty){dirty=false;RefreshCards();}};
+                if(dirty){dirty=false;RefreshCards(true);}};
             ApplyCollapsed();ApplyLock();ApplyBeastButton();LayoutWindow();
-            Shown+=delegate {if(!File.Exists(settings.Log))ChooseLog();else LoadLog(settings.Log);poll.Start();};
+            Shown+=delegate {if(!File.Exists(settings.Log))ChooseLog();else LoadLog(settings.Log);poll.Start();CheckForUpdates(true);};
         }
         private Button AddAction(Control parent,string glyph,string hint,Color color,Action click) {
             var button=new Button{Text=glyph,Font=new Font("Segoe UI Symbol",14,FontStyle.Bold),ForeColor=color,BackColor=bar.BackColor,
@@ -290,7 +315,7 @@ namespace BlightfallPopsDesktop {
             button.Text="";
             button.Paint+=delegate(object sender,PaintEventArgs e){
                 e.Graphics.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                using(var pen=new Pen(kind=="close"?red:kind=="mini"&&settings.MiniCards?green:dim,2.2f)){
+                using(var pen=new Pen(kind=="close"?red:kind=="mini"&&ShowMiniCards?green:dim,2.2f)){
                     if(kind=="folder"){
                         e.Graphics.DrawLines(pen,new[]{new Point(5,9),new Point(11,9),new Point(13,11),new Point(25,11),new Point(25,23),new Point(5,23),new Point(5,9)});
                         e.Graphics.DrawLine(pen,6,14,24,14);
@@ -360,9 +385,16 @@ namespace BlightfallPopsDesktop {
             var beastIcon=new CheckBox{Text="Blightfall on Blood Beast",Checked=settings.ShowBeastBlightfall,AutoSize=true,Left=143,Top=62,ForeColor=dim};
             var grouped=new CheckBox{Text="Beasts first, then Blightfall",Checked=settings.GroupByEventType,AutoSize=true,Left=12,Top=85,ForeColor=dim};
             var soulIcon=new CheckBox{Text="Soul Reaper",Checked=settings.ShowSoulReaper,AutoSize=true,Left=223,Top=85,ForeColor=dim};
-            var onTop=new CheckBox{Text="Always on top (WoW overlay)",Checked=settings.AlwaysOnTop,AutoSize=true,Left=12,Top=109,ForeColor=dim};
-            toolTip.SetToolTip(onTop,"Turn off for a second-screen OBS window capture; keep the overlay open.");
-            options.Controls.AddRange(new Control[]{time,font,icons,number,beastIcon,grouped,soulIcon,onTop,
+            var onTop=new CheckBox{Text="Overlay stays on top",Checked=settings.AlwaysOnTop,AutoSize=true,Left=12,Top=109,ForeColor=dim};
+            toolTip.SetToolTip(onTop,"Keep the overlay above all other windows, including WoW. Turn off for a second-screen OBS capture.");
+            var keepFocus=new CheckBox{Text="Keep WoW active",Checked=settings.KeepGameFocus,AutoSize=true,Left=170,Top=109,ForeColor=dim};
+            toolTip.SetToolTip(keepFocus,"Mouse clicks still work; keyboard movement stays in WoW. Turn off to type in overlay controls.");
+            updateButton=new Button{Text="Check for updates",Left=12,Top=139,Width=150,Height=27,
+                ForeColor=dim,BackColor=Color.FromArgb(42,46,51),FlatStyle=FlatStyle.Flat,TabStop=false};
+            updateButton.FlatAppearance.BorderColor=Color.FromArgb(87,91,91);
+            updateButton.Click+=delegate {CheckForUpdates(false);};
+            options.Controls.AddRange(new Control[]{time,font,icons,number,beastIcon,grouped,soulIcon,onTop,keepFocus,
+                updateButton,
                 new Label{Text="Blightfall ms",Left=12,Top=35,Width=115,ForeColor=dim},
                 new Label{Text="Text size",Left=137,Top=35,Width=70,ForeColor=dim},
                 new Label{Text="Icon size",Left=218,Top=35,Width=70,ForeColor=dim}});
@@ -374,17 +406,37 @@ namespace BlightfallPopsDesktop {
             grouped.CheckedChanged+=delegate {settings.GroupByEventType=grouped.Checked;scrollPixels=0;RefreshCards();Save();};
             soulIcon.CheckedChanged+=delegate {settings.ShowSoulReaper=soulIcon.Checked;RefreshCards();Save();};
             onTop.CheckedChanged+=delegate {settings.AlwaysOnTop=onTop.Checked;TopMost=settings.AlwaysOnTop;Save();};
+            keepFocus.CheckedChanged+=delegate {settings.KeepGameFocus=keepFocus.Checked;
+                if(IsHandleCreated)RecreateHandle();Save();};
         }
         private void BeginMove(object sender,MouseEventArgs e){if(!settings.Locked&&e.Button==MouseButtons.Left){dragStart=MousePosition;dragOrigin=Location;}}
         private void MoveWindow(object sender,MouseEventArgs e){if(dragStart.HasValue&&!settings.Locked){var p=MousePosition;Location=new Point(dragOrigin.X+p.X-dragStart.Value.X,dragOrigin.Y+p.Y-dragStart.Value.Y);}}
         private void EndMove(object sender,MouseEventArgs e){dragStart=null;Save();}
         private void ApplyLock(){grip.Visible=!settings.Locked;lockButton.Invalidate();}
-        private void ApplyCollapsed(){bar.Height=settings.Collapsed?10:75;
+        private void ToggleOptions(){
+            if(options.Visible){
+                options.Visible=false;
+                if(compactHeightBeforeOptions>0&&Height==260)Height=compactHeightBeforeOptions;
+                compactHeightBeforeOptions=0;
+            }else{
+                if(Height<260){compactHeightBeforeOptions=Height;Height=260;}
+                options.Visible=true;
+            }
+            LayoutWindow();
+        }
+        private void ApplyCollapsed(){
+            if(settings.Collapsed&&options.Visible){
+                options.Visible=false;
+                if(compactHeightBeforeOptions>0&&Height==260)Height=compactHeightBeforeOptions;
+                compactHeightBeforeOptions=0;
+            }
+            MinimumSize=new Size(340,settings.Collapsed?70:136);
+            bar.Height=settings.Collapsed?10:75;
             foreach(Control child in bar.Controls)child.Visible=!settings.Collapsed;
             bar.Cursor=settings.Collapsed?Cursors.Hand:Cursors.Default;
             collapseButton.Invalidate();
             bar.Click-=ExpandFromStrip;bar.Click+=ExpandFromStrip;
-            LayoutWindow();}
+            LayoutWindow();RefreshCards();miniButton.Invalidate();}
         private void ExpandFromStrip(object sender,EventArgs e){if(settings.Collapsed){settings.Collapsed=false;ApplyCollapsed();Save();}}
         private void LayoutWindow(){
             bar.Width=ClientSize.Width;
@@ -419,17 +471,76 @@ namespace BlightfallPopsDesktop {
             using(var brush=new SolidBrush(Color.FromArgb(87,91,91)))
                 e.Graphics.FillRectangle(brush,2,top,5,thumbHeight);
         }
+        private void CheckForUpdates(bool quiet){
+            if(checkingUpdate||installingUpdate)return;
+            checkingUpdate=true;updateButton.Enabled=false;
+            Task.Run(delegate{
+                ReleaseUpdate latest=null;Exception error=null;
+                try{latest=Updater.Latest();}catch(Exception ex){error=ex;}
+                if(IsDisposed||!IsHandleCreated)return;
+                try{BeginInvoke((MethodInvoker)delegate{
+                    checkingUpdate=false;updateButton.Enabled=true;
+                    if(error!=null){
+                        if(!quiet)MessageBox.Show(this,"Could not check GitHub releases.\n\n"+error.Message,
+                            "Blightfall Pops update",MessageBoxButtons.OK,MessageBoxIcon.Information);
+                        return;
+                    }
+                    var current=Assembly.GetExecutingAssembly().GetName().Version;
+                    if(latest.Version.CompareTo(current)<=0){
+                        if(!quiet)MessageBox.Show(this,"You already have the latest version ("+current+").",
+                            "Blightfall Pops update",MessageBoxButtons.OK,MessageBoxIcon.Information);
+                        return;
+                    }
+                    if(string.IsNullOrEmpty(latest.DownloadUrl)){
+                        if(!quiet)MessageBox.Show(this,"The latest release has no BlightfallPops.zip asset.",
+                            "Blightfall Pops update",MessageBoxButtons.OK,MessageBoxIcon.Information);
+                        return;
+                    }
+                    if(MessageBox.Show(this,"Version "+latest.Tag+" is available. Download and install it now?\n\n"+
+                            "The overlay will close and restart after the update.","Blightfall Pops update",
+                            MessageBoxButtons.YesNo,MessageBoxIcon.Question)!=DialogResult.Yes)return;
+                    DownloadUpdate(latest);
+                });}catch(ObjectDisposedException){}catch(InvalidOperationException){}
+            });
+        }
+        private void DownloadUpdate(ReleaseUpdate latest){
+            installingUpdate=true;updateButton.Enabled=false;
+            Task.Run(delegate{
+                string directory=null;Exception error=null;
+                try{directory=Updater.Stage(latest);}catch(Exception ex){error=ex;}
+                if(IsDisposed||!IsHandleCreated){
+                    if(directory!=null)try{System.IO.Directory.Delete(directory,true);}catch{}
+                    return;
+                }
+                try{BeginInvoke((MethodInvoker)delegate{
+                    installingUpdate=false;updateButton.Enabled=true;
+                    if(error!=null){
+                        MessageBox.Show(this,"Could not download the update.\n\n"+error.Message,
+                            "Blightfall Pops update",MessageBoxButtons.OK,MessageBoxIcon.Error);
+                        return;
+                    }
+                    try{Updater.StartInstaller(directory,Application.ExecutablePath,framed);Close();}
+                    catch(Exception ex){
+                        try{System.IO.Directory.Delete(directory,true);}catch{}
+                        MessageBox.Show(this,"Could not start the updater.\n\n"+ex.Message,
+                            "Blightfall Pops update",MessageBoxButtons.OK,MessageBoxIcon.Error);
+                    }
+                });}catch(ObjectDisposedException){}catch(InvalidOperationException){}
+            });
+        }
         private void Save(){if(WindowState!=FormWindowState.Normal)return;
             settings.Width=Width;settings.Height=Height;settings.X=Left;settings.Y=Top;
             try{settings.Save();}catch{}}
         private void ChooseLog(){using(var dialog=new OpenFileDialog{Title="Select the active WoWCombatLog.txt",Filter="Combat logs (*.txt)|*.txt|All files (*.*)|*.*"}){
             if(File.Exists(settings.Log))dialog.FileName=settings.Log;
             if(dialog.ShowDialog(this)==DialogResult.OK){settings.Log=dialog.FileName;LoadLog(settings.Log);Save();}}}
-        private void LoadLog(string file){try{tracker.Reset();var size=new FileInfo(file).Length;
+        private void LoadLog(string file){try{tracker.Reset();scrollPixels=0;var size=new FileInfo(file).Length;
             tracker.Position=Math.Max(0,size-8388608L);tracker.SkipFirstLine=tracker.Position>0;
-            tracker.Tick(file);dirty=false;RefreshCards();status.Text="Watching "+Path.GetFileName(file);}
+            tracker.Tick(file);dirty=false;RefreshCards();
+            ScrollTo(Math.Max(0,totalContentHeight-cards.ClientSize.Height));
+            status.Text="Watching "+Path.GetFileName(file);}
             catch(Exception ex){status.Text="Cannot open log: "+ex.Message;}}
-        private void ResetSession(){try{tracker.Reset(File.Exists(settings.Log)?new FileInfo(settings.Log).Length:0);tracker.SkipFirstLine=false;
+        private void ResetSession(){try{tracker.Reset(File.Exists(settings.Log)?new FileInfo(settings.Log).Length:0);tracker.SkipFirstLine=false;scrollPixels=0;
             dirty=false;RefreshCards();status.Text="New session — waiting for combat";}catch(Exception ex){status.Text=ex.Message;}}
         private string Format(long value){if(value>=1000000)return (value/1000000.0).ToString("0.##",CultureInfo.CurrentCulture)+"mil";
             if(settings.CompactNumbers&&value>=1000)return (value/1000.0).ToString("0.#",CultureInfo.CurrentCulture)+"K";
@@ -522,16 +633,18 @@ namespace BlightfallPopsDesktop {
             card.Controls.Add(new Panel{Left=0,Top=0,Width=3,Height=baseHeight,BackColor=entry.Beast?red:green});
             string title=entry.Beast?"Beast #"+entry.Number:"#"+entry.Number+"  "+entry.Time.ToString("HH:mm:ss");
             string total=Format(entry.Beast?entry.Corrupted+entry.Life:entry.Dread+entry.Virulent);
-            string hits=entry.Hits.Count+" hits";
+            string hits=entry.Hits.Count+(entry.Hits.Count==1?" hit":" hits");
             int iconSize=Math.Max(18,Math.Min(23,settings.IconSize));
             // Align the first icon to the title and the second icon to the hit count above it.
             int firstX=55;
             int statusCount=entry.Beast?(settings.ShowBeastBlightfall?1:0):(settings.ShowSoulReaper?2:1);
-            int statusX=card.Width-9-statusCount*iconSize-(statusCount-1)*3;
+            int statusRight=card.Width-9;
+            int statusX=statusRight-statusCount*iconSize-(statusCount-1)*3;
             int totalWidth,hitsWidth=0;
             using(var font=new Font("Segoe UI",settings.TextSize,FontStyle.Bold))totalWidth=TextRenderer.MeasureText(total,font).Width;
             if(!entry.Beast)using(var font=new Font("Segoe UI",settings.TextSize))hitsWidth=TextRenderer.MeasureText(hits,font).Width;
-            int totalX=card.Width-9-totalWidth;
+            int totalLabelWidth=totalWidth+4;
+            int totalX=statusRight-totalLabelWidth;
             int secondX=Math.Max(165,Math.Min(Math.Max(168,card.Width/2)+iconSize+7,
                 Math.Min(statusX-iconSize-53,totalX-hitsWidth-3)));
             int countX=secondX-3; // Label text has a small inset; its glyph matches the icon edge.
@@ -541,7 +654,9 @@ namespace BlightfallPopsDesktop {
             var titleLabel=Label(title,Color.White,52,1,Math.Max(30,(entry.Beast?totalX:countX)-57),true);
             toolTip.SetToolTip(titleLabel,title+(entry.Segment==""?"":" — "+entry.Segment));
             card.Controls.Add(titleLabel);
-            card.Controls.Add(Label(total,green,totalX,1,totalWidth+4,true));
+            var totalLabel=Label(total,green,totalX,1,totalLabelWidth,true);
+            totalLabel.TextAlign=ContentAlignment.TopRight;
+            card.Controls.Add(totalLabel);
             if(!entry.Beast)card.Controls.Add(Label(hits,dim,countX,3,hitsWidth+3));
             string first=entry.Beast?"CB":"DP",second=entry.Beast?"BiL":"VP";
             long firstValue=entry.Beast?entry.Corrupted:entry.Dread,secondValue=entry.Beast?entry.Life:entry.Virulent;
@@ -573,7 +688,9 @@ namespace BlightfallPopsDesktop {
             int endY=AddHitRows(card,entry,first,baseHeight+2);
             card.Height=Math.Max(baseHeight,endY+1);card.Controls[0].Height=card.Height;
         }
-        private void RefreshCards(){if(cards.IsDisposed)return;int oldScroll=scrollPixels;
+        private void RefreshCards(bool followLatest=false){if(cards.IsDisposed)return;
+            int oldScroll=scrollPixels;
+            bool wasAtBottom=oldScroll>=Math.Max(0,totalContentHeight-cards.ClientSize.Height)-2;
             cards.SuspendLayout();
             var oldCards=new List<Control>();foreach(Control existing in cards.Controls)oldCards.Add(existing);
             cards.Controls.Clear();foreach(Control existing in oldCards)existing.Dispose();
@@ -586,7 +703,7 @@ namespace BlightfallPopsDesktop {
             });
             foreach(var entry in ordered){if(entry.Beast&&!settings.ShowBeasts)continue;
                 var card=new Panel{Left=3,Top=y,Width=Math.Max(260,cards.ClientSize.Width-7),BackColor=rowColor,Tag=y};
-                if(settings.MiniCards){
+                if(ShowMiniCards){
                     RenderMiniCard(card,entry);
                     HookWheel(card);cards.Controls.Add(card);y+=card.Height+4;
                     continue;
@@ -598,38 +715,51 @@ namespace BlightfallPopsDesktop {
                 // The event art fills the left side of the header without adding a separate row.
                 card.Controls.Add(SpellIcon(entry.Beast?"BB":"BF",9,14,55));
                 const int contentLeft=76; // Shared starting edge, with space after the portrait.
+                int iconSize=settings.IconSize,firstX=contentLeft+5,secondX=Math.Max(168,card.Width/2);
+                int statusCount=entry.Beast?(settings.ShowBeastBlightfall?1:0):(settings.ShowSoulReaper?2:1);
+                bool showExtra=statusCount>0;
+                int statusRight=card.Width-12;
+                int statusX=statusRight-statusCount*iconSize-(statusCount-1)*4;
                 string totalText=Format(total);
-                string countText=entry.Hits.Count+" hits";
+                string countText=entry.Hits.Count+(entry.Hits.Count==1?" hit":" hits");
                 int totalWidth,countWidth=0;
                 using(var totalFont=new Font("Segoe UI",settings.TextSize,FontStyle.Bold))
                     totalWidth=TextRenderer.MeasureText(totalText,totalFont).Width;
                 if(!entry.Beast)using(var countFont=new Font("Segoe UI",settings.TextSize))
                     countWidth=TextRenderer.MeasureText(countText,countFont).Width;
-                int totalX=card.Width-12-totalWidth;
-                int countX=totalX-countWidth-9;
+                int totalLabelWidth=totalWidth+4;
+                int totalX=statusRight-totalLabelWidth;
+                int countX=secondX-3; // Align the hit count above the VP icon.
                 int titleEnd=entry.Beast?totalX:countX;
                 card.Controls.Add(Label(head,Color.White,contentLeft,3,Math.Max(30,titleEnd-contentLeft-6),true));
-                card.Controls.Add(Label(totalText,green,totalX,3,totalWidth+4,true));
-                if(!entry.Beast)card.Controls.Add(Label(countText,dim,countX,5,countWidth+3));
+                var totalLabel=Label(totalText,green,totalX,3,totalLabelWidth,true);
+                totalLabel.TextAlign=ContentAlignment.TopRight;
+                card.Controls.Add(totalLabel);
+                if(!entry.Beast){
+                    var countLabel=Label(countText,dim,countX,5,Math.Max(20,Math.Min(countWidth+3,totalX-countX-7)));
+                    toolTip.SetToolTip(countLabel,countText);card.Controls.Add(countLabel);
+                }
                 card.Controls.Add(Label(entry.Segment??"",dim,contentLeft,27,card.Width-contentLeft-11));
                 var first=entry.Beast?"CB":"DP";var second=entry.Beast?"BiL":"VP";
                 var firstValue=entry.Beast?entry.Corrupted:entry.Dread;var secondValue=entry.Beast?entry.Life:entry.Virulent;
-                // WinForms labels inset their glyphs slightly; offset the icon to the visible text edge.
-                int iconSize=settings.IconSize,firstX=contentLeft+5,secondX=Math.Max(168,card.Width/2),detailTop=58;
+                int detailTop=58;
                 int secondY=detailTop;
-                int extraSize=iconSize;
-                int statusCount=entry.Beast?(settings.ShowBeastBlightfall?1:0):(settings.ShowSoulReaper?2:1);
-                bool showExtra=statusCount>0;
-                bool extraRow=showExtra&&(card.Width<(statusCount==2?445:390)||(iconSize>32&&card.Width<425)||settings.TextSize>15);
-                int statusX=card.Width-12-statusCount*extraSize-(statusCount-1)*4;
+                string secondText=(entry.VOpen?"▾ ":"▸ ")+second+" "+Format(secondValue);
+                int secondLabelX=secondX+iconSize+5;
+                int secondTextWidth;
+                using(var detailFont=new Font("Segoe UI",settings.TextSize))
+                    secondTextWidth=TextRenderer.MeasureText(secondText,detailFont).Width;
+                // Keep the status markers beside the damage values when there is room.
+                bool statusOnDamageRow=showExtra&&statusX-secondLabelX-5>=secondTextWidth;
+                int statusY=detailTop+(showExtra&&!statusOnDamageRow?iconSize+5:0);
                 var firstIcon=SpellIcon(first,firstX,detailTop,iconSize);
                 var secondIcon=SpellIcon(second,secondX,secondY,iconSize);
                 card.Controls.Add(firstIcon);card.Controls.Add(secondIcon);
                 var firstLabel=Label((entry.DOpen?"▾ ":"▸ ")+first+" "+Format(firstValue),
                     !entry.Beast&&entry.Hits.Exists(h=>h.Kind=="DP"&&h.Crit)?Color.Gold:dim,firstX+iconSize+5,detailTop+2,
                     Math.Max(18,secondX-firstX-iconSize-10));
-                var secondLabel=Label((entry.VOpen?"▾ ":"▸ ")+second+" "+Format(secondValue),dim,secondX+iconSize+5,secondY+2,
-                    Math.Max(44,(showExtra&&!extraRow?statusX:card.Width-8)-secondX-iconSize-8));
+                var secondLabel=Label(secondText,dim,secondLabelX,secondY+2,
+                    Math.Max(44,(statusOnDamageRow?statusX-5:card.Width-8)-secondLabelX));
                 firstLabel.Cursor=secondLabel.Cursor=Cursors.Hand;card.Controls.Add(firstLabel);card.Controls.Add(secondLabel);
                 toolTip.SetToolTip(firstLabel,firstLabel.Text);toolTip.SetToolTip(secondLabel,secondLabel.Text);
                 EventHandler toggleFirst=delegate {entry.DOpen=!entry.DOpen;RefreshCards();};
@@ -640,17 +770,17 @@ namespace BlightfallPopsDesktop {
                     string tip=entry.Beast?(entry.Exploded?(entry.BlightfallBefore?"Blightfall before Blood Is Life":"No Blightfall before Blood Is Life"):"Waiting for Blood Is Life"):
                         "Festering Scythe: "+(entry.Scythe.HasValue?(entry.Scythe.Value?"active":"inactive"):"unknown");
                     bool? active=entry.Beast?(entry.Exploded?(bool?)entry.BlightfallBefore:null):entry.Scythe;
-                    int statusY=secondY+(extraRow?iconSize+6:0);
                     if(!entry.Beast&&settings.ShowSoulReaper)
-                        card.Controls.Add(SpellIcon("SR",statusX,statusY,extraSize,SoulReaperTip(entry),entry.SoulReaper));
-                    card.Controls.Add(SpellIcon(entry.Beast?"BF":"SC",statusX+(statusCount-1)*(extraSize+4),statusY,extraSize,tip,active));
+                        card.Controls.Add(SpellIcon("SR",statusX,statusY,iconSize,SoulReaperTip(entry),entry.SoulReaper));
+                    card.Controls.Add(SpellIcon(entry.Beast?"BF":"SC",statusX+(statusCount-1)*(iconSize+4),statusY,iconSize,tip,active));
                 }
-                int detailY=secondY+iconSize+(extraRow?iconSize+6:0)+5;
+                int detailY=Math.Max(secondY,statusY)+iconSize+5;
                 detailY=AddHitRows(card,entry,first,detailY);
                 card.Height=Math.Max(90,detailY+2);card.Controls[0].Height=card.Height;
                 HookWheel(card);cards.Controls.Add(card);y+=card.Height+5;
             }
-            totalContentHeight=y;cards.ResumeLayout();ScrollTo(oldScroll);
+            totalContentHeight=y;cards.ResumeLayout();
+            ScrollTo(followLatest&&wasAtBottom?Math.Max(0,totalContentHeight-cards.ClientSize.Height):oldScroll);
         }
         protected override void OnPaint(PaintEventArgs e){base.OnPaint(e);
             if(framed&&artwork!=null&&!settings.Collapsed){using(var pen=new Pen(Color.FromArgb(75,107,92),2))e.Graphics.DrawRectangle(pen,1,1,Width-3,Height-3);}
@@ -658,8 +788,12 @@ namespace BlightfallPopsDesktop {
     }
     internal static class Program {
         [STAThread] private static void Main(string[] args) {
+            bool framed=Array.IndexOf(args,"--framed")>=0;
+            if(args.Length>=4&&args[0]=="--apply-update"){
+                Updater.Apply(args[1],args[2],args[3],framed);return;
+            }
+            if(args.Length>=2&&args[0]=="--cleanup-update")Updater.CleanupLater(args[1]);
             Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
-            bool framed=args.Length>0&&args[0]=="--framed";
             Application.Run(new Overlay(framed));
         }
     }
