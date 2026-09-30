@@ -19,6 +19,15 @@ class UiPerformanceTests {
  using(var overlay=new Overlay(false)){
  var settings=(Settings)Field(overlay,"settings");settings.Log="";settings.ShowBeasts=true;settings.TextSize=10;settings.IconSize=26;
  settings.ShowOverkill=true;settings.GroupByEventType=false;overlay.ClientSize=new System.Drawing.Size(500,390);
+ var menu=(Control)Field(overlay,"options");Button bb=null,sr=null,sc=null;
+ foreach(Control c in menu.Controls){if((c.Tag as string)=="BB")bb=c as Button;if((c.Tag as string)=="SR")sr=c as Button;if((c.Tag as string)=="SC")sc=c as Button;}
+ Assert(bb!=null&&sr!=null&&sc!=null,"All spell toggles are in options");
+ Assert(bb.Size==sr.Size&&sr.Size==sc.Size&&bb.Left==sr.Left&&sr.Left==sc.Left,"Icon sizes and columns align");
+ Assert(sr.Top-bb.Top==sc.Top-sr.Top,"Icon row spacing is equal");
+ foreach(Control c in menu.Controls)if(c!=bb&&c!=sr&&c!=sc)Assert(!c.Bounds.IntersectsWith(bb.Bounds)&&!c.Bounds.IntersectsWith(sr.Bounds)&&!c.Bounds.IntersectsWith(sc.Bounds),"Option controls do not overlap icons");
+ Assert(settings.GetType().GetField("KeepGameFocus")==null,"Focus toggle is no longer persisted");
+ bool oldScythe=settings.ShowScythe;typeof(Control).GetMethod("OnClick",Hidden).Invoke(sc,new object[]{EventArgs.Empty});Assert(settings.ShowScythe!=oldScythe,"Scythe icon toggles visibility");typeof(Control).GetMethod("OnClick",Hidden).Invoke(sc,new object[]{EventArgs.Empty});
+ bool oldSoul=settings.ShowSoulReaper;typeof(Control).GetMethod("OnClick",Hidden).Invoke(sr,new object[]{EventArgs.Empty});Assert(settings.ShowSoulReaper!=oldSoul,"Soul Reaper icon toggles visibility");typeof(Control).GetMethod("OnClick",Hidden).Invoke(sr,new object[]{EventArgs.Empty});
  var tracker=(Tracker)Field(overlay,"tracker");var cache=(IDictionary)Field(overlay,"cardCache");
  foreach(bool mini in new[]{false,true}){
  settings.MiniCards=mini;tracker.Reset();var first=MakeEntry(1);var next=MakeEntry(2);tracker.Entries.Add(first);tracker.Entries.Add(next);

@@ -19,10 +19,9 @@ logging state from an idle file. The reader setting is saved between launches.
 "Overlay stays on top" is enabled by default for gameplay on the same
 screen. Switch it off in the gear for OBS capture on a second monitor. Keep
 the window open: minimizing may stop OBS window capture.
-"Keep WoW active" lets you click the overlay without moving keyboard focus
-away from WoW. Turn it on in the gear, then click WoW once. The overlay still
-receives the mouse click; WoW keeps keyboard movement. Turn it off to type in
-the overlay's numeric option fields. Your choice is saved.
+Clicks and scrolling keep WoW's keyboard focus by default. Click WoW once
+before using the overlay. Use the numeric arrow buttons or mouse wheel to
+adjust options. There is no focus checkbox. File selection dialogs still work.
 Collapsing the toolbar also closes the gear panel; reopen it with the cogwheel.
 Shrinking the window switches to two-line mini cards automatically. At its
 smallest height it displays one event; scroll to see earlier events. The gear
@@ -65,3 +64,10 @@ Escape also cancels when keyboard input is going to the overlay.
 The scrollbar stops above the resize handle while unlocked. Locked windows
 hide the handle and restore the scrollbar's full height. Event controls
 outside the visible area update their layout when you scroll to them.
+
+SPELL ICON TOGGLES (v1.0.0.9)
+Open the cogwheel menu. Its right-hand column contains equal-size buttons:
+Blood Beast, Soul Reaper, Festering Scythe. Click each to enable or disable
+its events/marker. A red stop mark means disabled; a green line means enabled.
+Blood Beast is now in this menu instead of the toolbar. Soul Reaper and
+Festering Scythe marker settings are independent and saved between launches.

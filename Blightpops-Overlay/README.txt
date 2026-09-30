@@ -19,7 +19,7 @@ BLIGHTFALL POPS — NATIVE WINDOWS APP TEST BUILD
 
 CONTROLS
 The folder button changes logs; the circular arrow starts a fresh session.
-The top icon row reads Mini, Blood Beast, Options, Log reader, Refresh, Folder, Lock,
+The top icon row reads Mini, Options, Log reader, Refresh, Folder, Lock,
 Collapse, Minimize, Close from left to right. Mini switches to two-line cards:
 event icon, name, hit count and total on the first line; DP/VP or CB/BiL icon
 and damage plus the Scythe or Blightfall status icon on the second. Click a
@@ -45,12 +45,9 @@ number format, and whether Blood Beast shows the small Blightfall icon.
 overlay is on a second monitor for OBS window capture so it does not cover
 other windows. Keep the app open; minimizing may stop OBS window capture.
 The choice is saved between launches.
-"Keep WoW active" allows clicking and scrolling the overlay without taking
-keyboard focus from WoW. Turn it on in the gear, then click WoW once so it is
-the active game window. Keyboard movement should then continue while you use
-the overlay mouse controls. The click belongs to the overlay, not the game;
-mouse look is unavailable while the cursor is over the overlay. Turn this
-setting off to type into the overlay's numeric option boxes. It is saved.
+Clicks and scrolling keep WoW's keyboard focus by default. Click WoW once
+before using the overlay. Use the numeric arrow buttons or mouse wheel to
+adjust options. There is no focus checkbox. File selection dialogs still work.
 The log-page icon pauses/resumes the overlay's reader. A green check shows the
 file grew recently, gray means idle or missing (not proof that /combatlog is
 off), and red pause means the overlay reader is off. Resuming reads missed
@@ -118,3 +115,10 @@ Escape also cancels when keyboard input is going to the overlay.
 The scrollbar stops above the resize handle while unlocked. Locked windows
 hide the handle and restore the scrollbar's full height. Event controls
 outside the visible area update their layout when you scroll to them.
+
+SPELL ICON TOGGLES (v1.0.0.9)
+Open the cogwheel menu. Its right-hand column contains equal-size buttons:
+Blood Beast, Soul Reaper, Festering Scythe. Click each to enable or disable
+its events/marker. A red stop mark means disabled; a green line means enabled.
+Blood Beast is now in this menu instead of the toolbar. Soul Reaper and
+Festering Scythe marker settings are independent and saved between launches.
