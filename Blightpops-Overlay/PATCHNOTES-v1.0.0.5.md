@@ -2,7 +2,7 @@
 
 - Fixed final Erupt hits being missed when logged just after an encounter-end marker, within the configured matching window.
 - Improved detection of advanced damage rows with shorter optional tails.
-- Added a separate Overkill breakdown to normal and mini event cards, plus per-target overkill in hit details.
+- Added an optional **Show overkill** toggle in the gear, off by default and saved between launches. Overkill appears only in expanded hit dropdowns; the main normal/mini cards keep their compact layout.
 - Full logged damage and hit counts include lethal hits. Overkill is shown separately and is not added twice.
 
 Build with **Build Once.cmd** or the existing GitHub Actions workflow, and publish under **v1.0.0.5**.

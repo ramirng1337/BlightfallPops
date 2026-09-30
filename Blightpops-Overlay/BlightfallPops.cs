@@ -27,7 +27,7 @@ namespace BlightfallPopsDesktop {
     }
     internal sealed class Settings {
         public int Width=500, Height=390, X=int.MinValue, Y=int.MinValue, WindowMs=1200, IconSize=26, TextSize=10;
-        public bool Locked=false, AlwaysOnTop=true, KeepGameFocus=false, WatchLog=true, ShowBeasts=true, ShowBeastBlightfall=true, ShowSoulReaper=false, CompactNumbers=true, Collapsed=false, GroupByEventType=false, MiniCards=false;
+        public bool Locked=false, AlwaysOnTop=true, KeepGameFocus=false, WatchLog=true, ShowBeasts=true, ShowBeastBlightfall=true, ShowSoulReaper=false, ShowOverkill=false, CompactNumbers=true, Collapsed=false, GroupByEventType=false, MiniCards=false;
         public string Log="";
         public static readonly string DirectoryPath=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"BlightfallPopsDesktop");
         public static Settings Load() {
@@ -40,7 +40,7 @@ namespace BlightfallPopsDesktop {
                 else if (int.TryParse(value,out n)) {
                     switch(key) { case "Width": s.Width=n;break;case "Height":s.Height=n;break;case "X":s.X=n;break;case "Y":s.Y=n;break;case "WindowMs":s.WindowMs=n;break;case "IconSize":s.IconSize=n;break;case "TextSize":s.TextSize=n;break; }
                 } else if(bool.TryParse(value,out b)) {
-                    switch(key) { case "Locked":s.Locked=b;break;case "AlwaysOnTop":s.AlwaysOnTop=b;break;case "KeepGameFocus":s.KeepGameFocus=b;break;case "WatchLog":s.WatchLog=b;break;case "ShowBeasts":s.ShowBeasts=b;break;case "ShowBeastBlightfall":s.ShowBeastBlightfall=b;break;case "ShowSoulReaper":s.ShowSoulReaper=b;break;case "CompactNumbers":s.CompactNumbers=b;break;case "Collapsed":s.Collapsed=b;break;case "GroupByEventType":s.GroupByEventType=b;break;case "MiniCards":s.MiniCards=b;break; }
+                    switch(key) { case "Locked":s.Locked=b;break;case "AlwaysOnTop":s.AlwaysOnTop=b;break;case "KeepGameFocus":s.KeepGameFocus=b;break;case "WatchLog":s.WatchLog=b;break;case "ShowBeasts":s.ShowBeasts=b;break;case "ShowBeastBlightfall":s.ShowBeastBlightfall=b;break;case "ShowSoulReaper":s.ShowSoulReaper=b;break;case "ShowOverkill":s.ShowOverkill=b;break;case "CompactNumbers":s.CompactNumbers=b;break;case "Collapsed":s.Collapsed=b;break;case "GroupByEventType":s.GroupByEventType=b;break;case "MiniCards":s.MiniCards=b;break; }
                 }
             }
             s.Width=Math.Max(340,Math.Min(2000,s.Width));s.Height=Math.Max(70,Math.Min(1500,s.Height));
@@ -52,7 +52,7 @@ namespace BlightfallPopsDesktop {
             Directory.CreateDirectory(DirectoryPath);
             var lines=new [] { "Log="+Log,"Width="+Width,"Height="+Height,"X="+X,"Y="+Y,"WindowMs="+WindowMs,
                 "IconSize="+IconSize,"TextSize="+TextSize,"Locked="+Locked,"AlwaysOnTop="+AlwaysOnTop,"KeepGameFocus="+KeepGameFocus,"WatchLog="+WatchLog,"ShowBeasts="+ShowBeasts,
-                "ShowBeastBlightfall="+ShowBeastBlightfall,"ShowSoulReaper="+ShowSoulReaper,"CompactNumbers="+CompactNumbers,"Collapsed="+Collapsed,
+                "ShowBeastBlightfall="+ShowBeastBlightfall,"ShowSoulReaper="+ShowSoulReaper,"ShowOverkill="+ShowOverkill,"CompactNumbers="+CompactNumbers,"Collapsed="+Collapsed,
                 "GroupByEventType="+GroupByEventType,"MiniCards="+MiniCards };
             File.WriteAllLines(Path.Combine(DirectoryPath,"settings.txt"),lines,Encoding.UTF8);
         }
@@ -448,12 +448,15 @@ namespace BlightfallPopsDesktop {
             toolTip.SetToolTip(onTop,"Keep the overlay above all other windows, including WoW. Turn off for a second-screen OBS capture.");
             var keepFocus=new CheckBox{Text="Keep WoW active",Checked=settings.KeepGameFocus,AutoSize=true,Left=170,Top=109,ForeColor=dim};
             toolTip.SetToolTip(keepFocus,"Mouse clicks still work; keyboard movement stays in WoW. Turn off to type in overlay controls.");
+            var overkill=new CheckBox{Text="Show overkill",Checked=settings.ShowOverkill,AutoSize=true,Left=174,Top=143,ForeColor=dim};
+            toolTip.SetToolTip(overkill,"Show overkill only in expanded hit details. Full damage and hit counts always include lethal hits.");
+            overkill.CheckedChanged+=delegate {settings.ShowOverkill=overkill.Checked;RefreshCards();Save();};
             updateButton=new Button{Text="Check for updates",Left=12,Top=139,Width=150,Height=27,
                 ForeColor=dim,BackColor=Color.FromArgb(42,46,51),FlatStyle=FlatStyle.Flat,TabStop=false};
             updateButton.FlatAppearance.BorderColor=Color.FromArgb(87,91,91);
             updateButton.Click+=delegate {CheckForUpdates(false);};
             options.Controls.AddRange(new Control[]{time,font,icons,number,beastIcon,grouped,soulIcon,onTop,keepFocus,
-                updateButton,
+                updateButton,overkill,
                 new Label{Text="Blightfall ms",Left=12,Top=35,Width=115,ForeColor=dim},
                 new Label{Text="Text size",Left=137,Top=35,Width=70,ForeColor=dim},
                 new Label{Text="Icon size",Left=218,Top=35,Width=70,ForeColor=dim}});
@@ -684,7 +687,7 @@ namespace BlightfallPopsDesktop {
                     }else targetLabel=Label(target,dim,targetX,5,targetWidth);
                     hitRow.Controls.Add(targetLabel);
                     toolTip.SetToolTip(targetLabel,target);
-                    if(hit.Overkill>0){
+                    if(settings.ShowOverkill&&hit.Overkill>0){
                         string overkillText="Overkill: "+Format(hit.Overkill);
                         int overkillY=hitRow.Height,available=Math.Max(25,hitRow.Width-amountX-8);
                         int overkillHeight=TextRenderer.MeasureText(overkillText,regular,
@@ -699,17 +702,6 @@ namespace BlightfallPopsDesktop {
                 card.Controls.Add(hitRow);y+=hitRow.Height+2;
             }
             return y;
-        }
-        private int AddOverkillSummary(Panel card,Entry entry,int y,int x){
-            if(entry.Overkill<=0)return y;
-            string text="Overkill: "+Format(entry.Overkill);
-            int width=Math.Max(25,card.Width-x-9),height;
-            using(var font=new Font("Segoe UI",settings.TextSize))
-                height=TextRenderer.MeasureText(text,font,new Size(width,int.MaxValue),TextFormatFlags.WordBreak).Height+3;
-            var label=Label(text,dim,x,y,width);
-            label.AutoEllipsis=false;label.Height=height;
-            toolTip.SetToolTip(label,"Overkill: "+entry.Overkill.ToString("N0")+" — already included in total damage");
-            card.Controls.Add(label);return y+height+2;
         }
         private void RenderMiniCard(Panel card,Entry entry){
             const int baseHeight=55;
@@ -768,8 +760,7 @@ namespace BlightfallPopsDesktop {
                     card.Controls.Add(SpellIcon("SR",statusX,29,iconSize,SoulReaperTip(entry),entry.SoulReaper));
                 card.Controls.Add(SpellIcon(entry.Beast?"BF":"SC",statusX+(statusCount-1)*(iconSize+3),29,iconSize,tip,active));
             }
-            int summaryEnd=AddOverkillSummary(card,entry,baseHeight+2,firstX);
-            int endY=AddHitRows(card,entry,first,summaryEnd);
+            int endY=AddHitRows(card,entry,first,baseHeight+2);
             card.Height=Math.Max(baseHeight,endY+1);card.Controls[0].Height=card.Height;
         }
         private void RefreshCards(bool followLatest=false){if(cards.IsDisposed)return;
@@ -859,7 +850,6 @@ namespace BlightfallPopsDesktop {
                     card.Controls.Add(SpellIcon(entry.Beast?"BF":"SC",statusX+(statusCount-1)*(iconSize+4),statusY,iconSize,tip,active));
                 }
                 int detailY=Math.Max(secondY,statusY)+iconSize+5;
-                detailY=AddOverkillSummary(card,entry,detailY,contentLeft);
                 detailY=AddHitRows(card,entry,first,detailY);
                 card.Height=Math.Max(90,detailY+2);card.Controls[0].Height=card.Height;
                 HookWheel(card);cards.Controls.Add(card);y+=card.Height+5;

@@ -43,8 +43,10 @@ contains the newly built BlightfallPops.exe. This keeps update checks accurate.
 OVERKILL DISPLAY (v1.0.0.5)
 
 Lethal Erupt hits remain part of the hit count and full logged damage total.
-When an event has overkill, a separate Overkill line appears below its damage
-row in both normal and mini mode. The hit dropdown shows overkill per target.
+Enable "Show overkill" in the gear to show overkill per target only in the
+expanded hit dropdowns. No overkill line is added to the main event cards.
+This option is off by default and your choice is saved between launches.
+Turning it off hides the extra lines without changing damage or hit counts.
 Overkill is already included in the damage numbers; do not add it again.
 The extra line wraps on narrow windows and follows your number/text settings.
 Events without overkill keep their existing layout. Blood Beast hits also
