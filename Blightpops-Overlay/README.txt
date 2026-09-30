@@ -78,7 +78,7 @@ FOR PUBLIC DOWNLOADS
 Upload the repository with its .github/workflows/build-windows.yml file to
 GitHub. In the Actions tab, "Build portable Windows overlay" can build a
 ready-to-run ZIP manually. For a patch, change the version in VersionInfo.cs,
-commit and push the changes, then push a matching version tag such as v1.0.0.4.
+commit and push the changes, then push a matching version tag such as v1.0.0.5.
 The workflow rejects a tag that differs from the compiled EXE and publishes
 BlightfallPops.zip as a public GitHub Release asset. The running overlay checks
 the latest release on startup and from the cogwheel's "Check for updates"
@@ -92,3 +92,17 @@ totals as guaranteed to be caused by Blightfall. Blood is Life damage is
 attributed to the most recently summoned own Blood Beast, as in the overlay.
 This version uses a plain dark window; the portrait art is not yet ported.
 Please test on Windows and send any build errors or a screenshot of the UI.
+
+OVERKILL DISPLAY (v1.0.0.5)
+
+Lethal Erupt hits remain part of the hit count and full logged damage total.
+When an event has overkill, a separate Overkill line appears below its damage
+row in both normal and mini mode. The hit dropdown shows overkill per target.
+Overkill is already included in the damage numbers; do not add it again.
+The extra line wraps on narrow windows and follows your number/text settings.
+Events without overkill keep their existing layout. Blood Beast hits also
+show this breakdown when the log records overkill.
+
+The tracker also accepts final Erupt hits arriving after an encounter-end
+marker, within the original Blightfall matching window. Damage parsing no
+longer relies on a minimum row length to detect advanced logging.

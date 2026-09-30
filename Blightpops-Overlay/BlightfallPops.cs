@@ -11,7 +11,7 @@ using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
 namespace BlightfallPopsDesktop {
-    internal sealed class Hit { public string Kind, Target; public long Amount; public bool Crit; }
+    internal sealed class Hit { public string Kind, Target; public long Amount, Overkill; public bool Crit; }
     internal sealed class Entry {
         public bool Beast, DOpen, VOpen, Exploded, BlightfallBefore;
         public bool? Scythe, SoulReaper;
@@ -21,6 +21,8 @@ namespace BlightfallPopsDesktop {
         public DateTime Time;
         public string Segment, Guid;
         public long Dread, Virulent, Corrupted, Life;
+        // Damage totals already include overkill. Keep this as a separate breakdown.
+        public long Overkill {get{long total=0;foreach(var hit in Hits)total+=hit.Overkill;return total;}}
         public readonly List<Hit> Hits = new List<Hit>();
     }
     internal sealed class Settings {
@@ -65,7 +67,7 @@ namespace BlightfallPopsDesktop {
         public bool SkipFirstLine;
         private string remainder="", encounter="";
         private DateTime lastOwnCombat=DateTime.MinValue;
-        private Entry pending, recentBeast;
+        private Entry pending, recentBlightfall, recentBeast;
         private readonly Dictionary<string,Entry> beasts=new Dictionary<string,Entry>();
         private readonly Dictionary<string,int> attempts=new Dictionary<string,int>();
         private readonly Dictionary<string,bool> scythe=new Dictionary<string,bool>();
@@ -77,13 +79,13 @@ namespace BlightfallPopsDesktop {
         private static readonly string[] logDates={"M/d/yyyy HH:mm:ss.FFFFFFF","d.M.yyyy HH:mm:ss.FFFFFFF"};
         private void Notify(){if(Changed!=null)Changed();}
         public void Reset(long at=0) {
-            Entries.Clear();pending=null;recentBeast=null;beasts.Clear();attempts.Clear();scythe.Clear();soulReaper.Clear();
+            Entries.Clear();pending=null;recentBlightfall=null;recentBeast=null;beasts.Clear();attempts.Clear();scythe.Clear();soulReaper.Clear();
             castNumber=beastNumber=pullNumber=0;nextSequence=0;Guid=Player=Segment=encounter=remainder="";
             lastOwnCombat=DateTime.MinValue;Position=at;SkipFirstLine=at>0;Notify();
         }
         public void Finish() {
             if(pending==null)return;
-            pending.Number=++castNumber;Entries.Add(pending);pending=null;Notify();
+            pending.Number=++castNumber;Entries.Add(pending);recentBlightfall=pending;pending=null;Notify();
         }
         public void Tick(string path) {
             if(!File.Exists(path))return;
@@ -128,8 +130,21 @@ namespace BlightfallPopsDesktop {
             if(lastOwnCombat==DateTime.MinValue || (time-lastOwnCombat).TotalSeconds>12)Segment="Estimated trash pull "+(++pullNumber);
             lastOwnCombat=time;
         }
-        private static long Amount(List<string> f) {long n;return long.TryParse(F(f,f.Count>=41?31:12),out n)?Math.Max(0,n):0;}
-        private static bool Crit(List<string> f) {return F(f,f.Count>=41?38:19)=="1";}
+        // Detect the advanced unit block by its GUID, not by the row length.
+        // Retail suffix: amount, baseAmount, overkill, school, resisted, blocked,
+        // absorbed, critical, glancing, crushing, [optional hint/offhand].
+        private static int DamageOffset(List<string> f) {
+            string unit=F(f,12);
+            return unit.StartsWith("Player-")||unit.StartsWith("Creature-")||unit.StartsWith("Pet-")
+                ||unit.StartsWith("Vehicle-")||unit=="0000000000000000"?31:12;
+        }
+        private static long DamageField(List<string> f,int offset) {
+            long n;return long.TryParse(F(f,DamageOffset(f)+offset),NumberStyles.Integer,
+                CultureInfo.InvariantCulture,out n)?Math.Max(0,n):0;
+        }
+        private static long Amount(List<string> f) {return DamageField(f,0);}
+        private static long Overkill(List<string> f) {return DamageField(f,2);}
+        private static bool Crit(List<string> f) {return F(f,DamageOffset(f)+7)=="1";}
         private void Process(string line) {
             var match=prefix.Match(line);if(!match.Success)return;
             DateTime time;
@@ -153,7 +168,7 @@ namespace BlightfallPopsDesktop {
                 else if(source==Guid)beast=recentBeast;
                 if(beast!=null&&time>=beast.Time){long amount=Amount(f);
                     if(spell=="434574")beast.Corrupted+=amount;else{beast.Life+=amount;beast.Exploded=true;}
-                    beast.Hits.Add(new Hit{Kind=spell=="434574"?"CB":"BiL",Amount=amount,Target=F(f,6),Crit=Crit(f)});Notify();}
+                    beast.Hits.Add(new Hit{Kind=spell=="434574"?"CB":"BiL",Amount=amount,Overkill=Overkill(f),Target=F(f,6),Crit=Crit(f)});Notify();}
             }
             if(encounter=="" && (kind=="SPELL_DAMAGE"||kind=="SPELL_PERIODIC_DAMAGE"||kind=="SWING_DAMAGE"||kind=="RANGE_DAMAGE"||kind=="SPELL_MISSED"||kind=="SWING_MISSED")
                 &&OwnFlags(F(f,3))&&source.StartsWith("Player-")&&(dest.StartsWith("Creature-")||dest.StartsWith("Vehicle-")))UpdatePull(time);
@@ -187,13 +202,18 @@ namespace BlightfallPopsDesktop {
                     Scythe=scythe.TryGetValue(source,out value)?(bool?)value:null,
                     SoulReaper=affected>0,SoulReaperTargets=affected};return;
             }
-            if(pending==null||source!=Guid||(kind!="SPELL_DAMAGE"&&kind!="SPELL_PERIODIC_DAMAGE"))return;
-            double ms=(time-pending.Time).TotalMilliseconds;
+            if(source!=Guid||(kind!="SPELL_DAMAGE"&&kind!="SPELL_PERIODIC_DAMAGE"))return;
+            // An encounter-end marker may precede the last damage rows in the same
+            // batch. Keep accepting matching hits for that cast's original window.
+            Entry eruption=pending??recentBlightfall;
+            if(eruption==null)return;
+            double ms=(time-eruption.Time).TotalMilliseconds;
             if(ms<0||ms>WindowMs)return;
             if(spell!="1241171"&&spell!="1241167")return;
             long damage=Amount(f);string plague=spell=="1241171"?"DP":"VP";
-            if(plague=="DP")pending.Dread+=damage;else pending.Virulent+=damage;
-            pending.Hits.Add(new Hit{Kind=plague,Amount=damage,Target=F(f,6),Crit=Crit(f)});
+            if(plague=="DP")eruption.Dread+=damage;else eruption.Virulent+=damage;
+            eruption.Hits.Add(new Hit{Kind=plague,Amount=damage,Overkill=Overkill(f),Target=F(f,6),Crit=Crit(f)});
+            if(pending==null)Notify();
         }
     }
     internal sealed class Overlay : Form {
@@ -664,11 +684,32 @@ namespace BlightfallPopsDesktop {
                     }else targetLabel=Label(target,dim,targetX,5,targetWidth);
                     hitRow.Controls.Add(targetLabel);
                     toolTip.SetToolTip(targetLabel,target);
+                    if(hit.Overkill>0){
+                        string overkillText="Overkill: "+Format(hit.Overkill);
+                        int overkillY=hitRow.Height,available=Math.Max(25,hitRow.Width-amountX-8);
+                        int overkillHeight=TextRenderer.MeasureText(overkillText,regular,
+                            new Size(available,int.MaxValue),TextFormatFlags.WordBreak).Height+3;
+                        var overkillLabel=Label(overkillText,dim,amountX,overkillY,available);
+                        overkillLabel.AutoEllipsis=false;overkillLabel.Height=overkillHeight;
+                        toolTip.SetToolTip(overkillLabel,"Overkill: "+hit.Overkill.ToString("N0")+" (included in hit damage)");
+                        hitRow.Controls.Add(overkillLabel);hitRow.Height+=overkillHeight+2;
+                    }
                 }
                 if(hit.Crit)hitRow.Controls.Add(new Panel{Left=1,Top=3,Width=2,Height=hitRow.Height-6,BackColor=Color.Gold});
                 card.Controls.Add(hitRow);y+=hitRow.Height+2;
             }
             return y;
+        }
+        private int AddOverkillSummary(Panel card,Entry entry,int y,int x){
+            if(entry.Overkill<=0)return y;
+            string text="Overkill: "+Format(entry.Overkill);
+            int width=Math.Max(25,card.Width-x-9),height;
+            using(var font=new Font("Segoe UI",settings.TextSize))
+                height=TextRenderer.MeasureText(text,font,new Size(width,int.MaxValue),TextFormatFlags.WordBreak).Height+3;
+            var label=Label(text,dim,x,y,width);
+            label.AutoEllipsis=false;label.Height=height;
+            toolTip.SetToolTip(label,"Overkill: "+entry.Overkill.ToString("N0")+" — already included in total damage");
+            card.Controls.Add(label);return y+height+2;
         }
         private void RenderMiniCard(Panel card,Entry entry){
             const int baseHeight=55;
@@ -727,7 +768,8 @@ namespace BlightfallPopsDesktop {
                     card.Controls.Add(SpellIcon("SR",statusX,29,iconSize,SoulReaperTip(entry),entry.SoulReaper));
                 card.Controls.Add(SpellIcon(entry.Beast?"BF":"SC",statusX+(statusCount-1)*(iconSize+3),29,iconSize,tip,active));
             }
-            int endY=AddHitRows(card,entry,first,baseHeight+2);
+            int summaryEnd=AddOverkillSummary(card,entry,baseHeight+2,firstX);
+            int endY=AddHitRows(card,entry,first,summaryEnd);
             card.Height=Math.Max(baseHeight,endY+1);card.Controls[0].Height=card.Height;
         }
         private void RefreshCards(bool followLatest=false){if(cards.IsDisposed)return;
@@ -817,6 +859,7 @@ namespace BlightfallPopsDesktop {
                     card.Controls.Add(SpellIcon(entry.Beast?"BF":"SC",statusX+(statusCount-1)*(iconSize+4),statusY,iconSize,tip,active));
                 }
                 int detailY=Math.Max(secondY,statusY)+iconSize+5;
+                detailY=AddOverkillSummary(card,entry,detailY,contentLeft);
                 detailY=AddHitRows(card,entry,first,detailY);
                 card.Height=Math.Max(90,detailY+2);card.Controls[0].Height=card.Height;
                 HookWheel(card);cards.Controls.Add(card);y+=card.Height+5;

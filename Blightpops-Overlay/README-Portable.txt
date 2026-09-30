@@ -37,5 +37,19 @@ the spell art and character icon; no other files are needed to run it.
 
 Source code and more detailed usage notes are in the public project repository.
 For each new release, update VersionInfo.cs to match the GitHub tag (for example,
-1.0.0.4 for v1.0.0.4), run Build Once.cmd, and attach a BlightfallPops.zip that
+1.0.0.5 for v1.0.0.5), run Build Once.cmd, and attach a BlightfallPops.zip that
 contains the newly built BlightfallPops.exe. This keeps update checks accurate.
+
+OVERKILL DISPLAY (v1.0.0.5)
+
+Lethal Erupt hits remain part of the hit count and full logged damage total.
+When an event has overkill, a separate Overkill line appears below its damage
+row in both normal and mini mode. The hit dropdown shows overkill per target.
+Overkill is already included in the damage numbers; do not add it again.
+The extra line wraps on narrow windows and follows your number/text settings.
+Events without overkill keep their existing layout. Blood Beast hits also
+show this breakdown when the log records overkill.
+
+The tracker also accepts final Erupt hits arriving after an encounter-end
+marker, within the original Blightfall matching window. Damage parsing no
+longer relies on a minimum row length to detect advanced logging.
