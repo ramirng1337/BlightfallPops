@@ -36,7 +36,24 @@ class TrackerTests {
  Assert(lethalBoss.Entries[0].Overkill==623336,"Screenshot overkill shown separately");
  Assert(lethalBoss.Entries[0].Dread-lethalBoss.Entries[0].Overkill==1342498,"Effective damage does not double-count overkill");
  // Tick the prior real log and require lethal hit data to survive file parsing.
- if(args.Length>0){var t=new Tracker();t.Tick(args[0]);t.Finish();int lethal=0,hits=0;long overkill=0;foreach(var e in t.Entries){foreach(var h in e.Hits){hits++;if(h.Overkill>0)lethal++;}overkill+=e.Overkill;}Assert(lethal>0&&overkill>0,"Real log retains lethal hits");Console.WriteLine("Real log: "+hits+" hits, "+lethal+" with overkill, "+overkill+" overkill");}
+ if(args.Length>0){var t=new Tracker();do{t.Tick(args[0]);}while(t.Position<new System.IO.FileInfo(args[0]).Length);t.Finish();int lethal=0,hits=0;long overkill=0;foreach(var e in t.Entries){foreach(var h in e.Hits){hits++;if(h.Overkill>0)lethal++;}overkill+=e.Overkill;}Assert(lethal>0&&overkill>0,"Real log retains lethal hits");Console.WriteLine("Real log: "+hits+" hits, "+lethal+" with overkill, "+overkill+" overkill");}
+ // Stream across the 64 KiB read boundary without losing UTF-8 target names.
+ string file=System.IO.Path.GetTempFileName();
+ try{
+ string line=new DateTime(2026,9,30,12,0,0).ToString("M/d/yyyy HH:mm:ss.ffff",System.Globalization.CultureInfo.InvariantCulture)+"  ";
+ string cast=line+Prefix("SPELL_CAST_SUCCESS","1271967")+"\n";
+ string damage=line+Damage("1241171",777,100,true,false,false).Replace(",Enemy,",",ÄEnemy,")+"\n";
+ int split=damage.IndexOf("Ä",StringComparison.Ordinal);
+ string padding=new string('x',65535-System.Text.Encoding.UTF8.GetByteCount(cast)-System.Text.Encoding.UTF8.GetByteCount(damage.Substring(0,split))-1)+"\n";
+ System.IO.File.WriteAllText(file,padding+cast+damage,new System.Text.UTF8Encoding(false));
+ var streamed=new Tracker();do{streamed.Tick(file);}while(streamed.Position<new System.IO.FileInfo(file).Length);streamed.Finish();
+ Assert(streamed.Entries.Count==1&&streamed.Entries[0].Dread==777,"Chunked log retains damage");
+ Assert(streamed.Entries[0].Hits[0].Target=="ÄEnemy","UTF-8 target survives buffer boundary");
+ streamed.Reset(new System.IO.FileInfo(file).Length);streamed.SkipFirstLine=false;
+ System.IO.File.AppendAllText(file,cast+damage,new System.Text.UTF8Encoding(false));
+ do{streamed.Tick(file);}while(streamed.Position<new System.IO.FileInfo(file).Length);streamed.Finish();
+ Assert(streamed.Entries.Count==1&&streamed.Entries[0].Hits.Count==1,"EOF reset reads only newly appended events");
+ }finally{System.IO.File.Delete(file);}
  Console.WriteLine("Passed "+checks+" checks");
  }
 }

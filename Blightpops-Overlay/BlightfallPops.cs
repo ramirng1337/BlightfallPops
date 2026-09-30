@@ -66,6 +66,7 @@ namespace BlightfallPopsDesktop {
         public DateTime LastWrite=DateTime.MinValue;
         public bool SkipFirstLine;
         private string remainder="", encounter="";
+        private readonly Decoder logDecoder=Encoding.UTF8.GetDecoder();
         private DateTime lastOwnCombat=DateTime.MinValue;
         private Entry pending, recentBlightfall, recentBeast;
         private readonly Dictionary<string,Entry> beasts=new Dictionary<string,Entry>();
@@ -81,7 +82,7 @@ namespace BlightfallPopsDesktop {
         public void Reset(long at=0) {
             Entries.Clear();pending=null;recentBlightfall=null;recentBeast=null;beasts.Clear();attempts.Clear();scythe.Clear();soulReaper.Clear();
             castNumber=beastNumber=pullNumber=0;nextSequence=0;Guid=Player=Segment=encounter=remainder="";
-            lastOwnCombat=DateTime.MinValue;Position=at;SkipFirstLine=at>0;Notify();
+            logDecoder.Reset();lastOwnCombat=DateTime.MinValue;Position=at;SkipFirstLine=at>0;Notify();
         }
         public void Finish() {
             if(pending==null)return;
@@ -94,22 +95,27 @@ namespace BlightfallPopsDesktop {
             if(file.Length>Position) {
                 using(var stream=new FileStream(path,FileMode.Open,FileAccess.Read,FileShare.ReadWrite|FileShare.Delete)) {
                     stream.Seek(Position,SeekOrigin.Begin);
-                    var buffer=new byte[65536]; int count;
+                    var buffer=new byte[65536];var characters=new char[65536]; int count;
+                    var batch=System.Diagnostics.Stopwatch.StartNew();
                     while((count=stream.Read(buffer,0,buffer.Length))>0) {
                         Position+=count;
-                        remainder+=Encoding.UTF8.GetString(buffer,0,count);
-                        int newline;
-                        while((newline=remainder.IndexOf('\n'))>=0) {
-                            string line=remainder.Substring(0,newline).TrimEnd('\r');
-                            remainder=remainder.Substring(newline+1);
+                        int characterCount=logDecoder.GetChars(buffer,0,count,characters,0,false);
+                        remainder+=new string(characters,0,characterCount);
+                        int newline,start=0;
+                        while((newline=remainder.IndexOf('\n',start))>=0) {
+                            string line=remainder.Substring(start,newline-start).TrimEnd('\r');
+                            start=newline+1;
                             if(SkipFirstLine)SkipFirstLine=false;else Process(line);
                         }
+                        if(start>0)remainder=remainder.Substring(start);
                         if(remainder.Length>1048576)remainder="";
+                        // Yield between batches so large catch-ups do not monopolize the UI thread.
+                        if(batch.ElapsedMilliseconds>=40)break;
                     }
                 }
             }
             LastWrite=file.LastWriteTime;
-            if(pending!=null && (DateTime.Now-file.LastWriteTime).TotalSeconds>2.5)Finish();
+            if(Position>=file.Length&&pending!=null && (DateTime.Now-file.LastWriteTime).TotalSeconds>2.5)Finish();
         }
         private static List<string> Csv(string text) {
             var result=new List<string>();var field=new StringBuilder();bool quoted=false;
@@ -216,10 +222,56 @@ namespace BlightfallPopsDesktop {
             if(pending==null)Notify();
         }
     }
+    internal sealed class BufferedPanel : Panel {
+        public BufferedPanel(){DoubleBuffered=true;ResizeRedraw=true;}
+    }
     internal sealed class Overlay : Form {
+        private sealed class CardState {
+            public Entry Entry;public Panel Card;public string Signature,First;
+            public int DetailsTop,MinimumHeight;public Label FirstLabel,SecondLabel;
+            public readonly Dictionary<Hit,Panel> Rows=new Dictionary<Hit,Panel>();
+        }
+        private readonly Dictionary<Entry,CardState> cardCache=new Dictionary<Entry,CardState>();
+        private readonly List<CardState> visibleCards=new List<CardState>();
+        private readonly Dictionary<string,Font> labelFonts=new Dictionary<string,Font>();
+        private Font LabelFont(bool bold){
+            string key=settings.TextSize+":"+bold;Font font;
+            if(!labelFonts.TryGetValue(key,out font)){font=new Font("Segoe UI",settings.TextSize,bold?FontStyle.Bold:FontStyle.Regular);labelFonts.Add(key,font);}
+            return font;
+        }
+        private string CardSignature(Entry e,int width){
+            return string.Join("|",new object[]{width,ShowMiniCards,settings.IconSize,settings.TextSize,
+                settings.CompactNumbers,settings.ShowBeastBlightfall,settings.ShowSoulReaper,settings.ShowOverkill,
+                e.Hits.Count,e.Dread,e.Virulent,e.Corrupted,e.Life,e.Scythe,e.SoulReaper,e.SoulReaperTargets,
+                e.Exploded,e.BlightfallBefore,e.Number,e.Time.Ticks,e.Segment});
+        }
+        private void ConfigureDetails(Panel card,Entry entry,string first,int top,int minimum,Label firstLabel,Label secondLabel){
+            var state=cardCache[entry];state.First=first;state.DetailsTop=top;state.MinimumHeight=minimum;
+            state.FirstLabel=firstLabel;state.SecondLabel=secondLabel;LayoutDetails(state);
+        }
+        private void LayoutDetails(CardState state){
+            int end=AddHitRows(state.Card,state.Entry,state.First,state.DetailsTop);
+            state.Card.Height=Math.Max(state.MinimumHeight,end+2);state.Card.Controls[0].Height=state.Card.Height;
+        }
+        private void ToggleDetails(Entry entry,bool first){
+            CardState state;if(!cardCache.TryGetValue(entry,out state))return;
+            if(first)entry.DOpen=!entry.DOpen;else entry.VOpen=!entry.VOpen;
+            if(!ShowMiniCards){
+                Label label=first?state.FirstLabel:state.SecondLabel;
+                label.Text=((first?entry.DOpen:entry.VOpen)?"▾ ":"▸ ")+label.Text.Substring(2);
+                toolTip.SetToolTip(label,label.Text);
+            }
+            int previous=scrollPixels;cards.SuspendLayout();state.Card.SuspendLayout();
+            LayoutDetails(state);state.Card.ResumeLayout();PositionCards();cards.ResumeLayout();ScrollTo(previous);
+        }
+        private void PositionCards(){
+            int y=3;foreach(var state in visibleCards){state.Card.Tag=y;state.Card.Top=y-scrollPixels;y+=state.Card.Height+(ShowMiniCards?4:5);}
+            totalContentHeight=y;
+        }
+
         private readonly Settings settings=Settings.Load();
         private readonly Tracker tracker=new Tracker();
-        private readonly Panel bar=new Panel(), cards=new Panel(), options=new Panel(), grip=new Panel(), scrollTrack=new Panel();
+        private readonly Panel bar=new Panel(), cards=new BufferedPanel(), options=new Panel(), grip=new Panel(), scrollTrack=new Panel();
         private readonly Label status=new Label();
         private readonly Timer poll=new Timer();
         private readonly ToolTip toolTip=new ToolTip();
@@ -326,7 +378,7 @@ namespace BlightfallPopsDesktop {
                 if(wasAtBottom||ShowMiniCards&&cards.ClientSize.Height<=61)
                     ScrollTo(Math.Max(0,totalContentHeight-cards.ClientSize.Height));
             };Move+=delegate {if(Visible&&WindowState==FormWindowState.Normal)Save();};
-            FormClosing+=delegate {Save();poll.Stop();toolTip.Dispose();if(artwork!=null)artwork.Dispose();foreach(var image in spellIcons.Values)image.Dispose();};
+            FormClosing+=delegate {Save();poll.Stop();toolTip.Dispose();if(artwork!=null)artwork.Dispose();foreach(var image in spellIcons.Values)image.Dispose();foreach(var font in labelFonts.Values)font.Dispose();};
             tracker.WindowMs=settings.WindowMs;tracker.Changed+=delegate {dirty=true;};
             poll.Interval=350;poll.Tick+=delegate {try {if(settings.WatchLog&&settings.Log!=""){
                     long before=tracker.Position;
@@ -605,12 +657,17 @@ namespace BlightfallPopsDesktop {
             ScrollTo(Math.Max(0,totalContentHeight-cards.ClientSize.Height));
             status.Text=settings.WatchLog?"Watching "+Path.GetFileName(file):"Overlay log reading paused";UpdateLogButton();}
             catch(Exception ex){status.Text="Cannot open log: "+ex.Message;}}
-        private void ResetSession(){try{tracker.Reset(File.Exists(settings.Log)?new FileInfo(settings.Log).Length:0);tracker.SkipFirstLine=false;scrollPixels=0;
+        private void ResetSession(){try{
+            long end=0;bool partial=false;
+            if(File.Exists(settings.Log))using(var stream=new FileStream(settings.Log,FileMode.Open,FileAccess.Read,FileShare.ReadWrite|FileShare.Delete)){
+                end=stream.Length;if(end>0){stream.Seek(end-1,SeekOrigin.Begin);partial=stream.ReadByte()!=10;}
+            }
+            tracker.Reset(end);tracker.SkipFirstLine=partial;scrollPixels=0;
             dirty=false;RefreshCards();status.Text="New session — waiting for combat";}catch(Exception ex){status.Text=ex.Message;}}
         private string Format(long value){if(value>=1000000)return (value/1000000.0).ToString("0.##",CultureInfo.CurrentCulture)+"mil";
             if(settings.CompactNumbers&&value>=1000)return (value/1000.0).ToString("0.#",CultureInfo.CurrentCulture)+"K";
             return value.ToString("N0",CultureInfo.CurrentCulture);}
-        private Label Label(string text,Color color,int left,int top,int width,bool bold=false){return new Label{Text=text,ForeColor=color,Font=new Font("Segoe UI",settings.TextSize,bold?FontStyle.Bold:FontStyle.Regular),
+        private Label Label(string text,Color color,int left,int top,int width,bool bold=false){return new Label{Text=text,ForeColor=color,Font=LabelFont(bold),
             Left=left,Top=top,Width=width,Height=25,AutoEllipsis=true,BackColor=Color.Transparent};}
         private void LoadSpellIcons(){
             var files=new Dictionary<string,string>{
@@ -656,10 +713,14 @@ namespace BlightfallPopsDesktop {
             return box;
         }
         private int AddHitRows(Panel card,Entry entry,string first,int y){
+            var state=cardCache[entry];
+            foreach(var row in state.Rows.Values)row.Visible=false;
             foreach(var hit in entry.Hits){
                 if(!(hit.Kind==first?entry.DOpen:entry.VOpen))continue;
+                Panel cached;
+                if(state.Rows.TryGetValue(hit,out cached)){cached.Top=y;cached.Visible=true;y+=cached.Height+2;continue;}
                 int hitSize=Math.Min(32,Math.Max(23,settings.IconSize));
-                var hitRow=new Panel{Left=8,Top=y,Width=card.Width-16,Height=hitSize+6,BackColor=Color.FromArgb(23,28,33)};
+                var hitRow=new BufferedPanel{Left=8,Top=y,Width=card.Width-16,Height=hitSize+6,BackColor=Color.FromArgb(23,28,33)};
                 hitRow.Controls.Add(SpellIcon(hit.Kind,13,3,hitSize));
                 string amount=Format(hit.Amount), target=string.IsNullOrWhiteSpace(hit.Target)?"Unknown target":hit.Target;
                 string result=hit.Crit?"Crit":"Hit";
@@ -699,7 +760,7 @@ namespace BlightfallPopsDesktop {
                     }
                 }
                 if(hit.Crit)hitRow.Controls.Add(new Panel{Left=1,Top=3,Width=2,Height=hitRow.Height-6,BackColor=Color.Gold});
-                card.Controls.Add(hitRow);y+=hitRow.Height+2;
+                card.Controls.Add(hitRow);state.Rows.Add(hit,hitRow);HookWheel(hitRow);y+=hitRow.Height+2;
             }
             return y;
         }
@@ -748,8 +809,8 @@ namespace BlightfallPopsDesktop {
             toolTip.SetToolTip(firstIcon,firstTip);toolTip.SetToolTip(firstLabel,firstTip);
             toolTip.SetToolTip(secondIcon,secondTip);toolTip.SetToolTip(secondLabel,secondTip);
             firstIcon.Cursor=firstLabel.Cursor=secondIcon.Cursor=secondLabel.Cursor=Cursors.Hand;
-            EventHandler toggleFirst=delegate {entry.DOpen=!entry.DOpen;RefreshCards();};
-            EventHandler toggleSecond=delegate {entry.VOpen=!entry.VOpen;RefreshCards();};
+            EventHandler toggleFirst=delegate {ToggleDetails(entry,true);};
+            EventHandler toggleSecond=delegate {ToggleDetails(entry,false);};
             firstIcon.Click+=toggleFirst;firstLabel.Click+=toggleFirst;
             secondIcon.Click+=toggleSecond;secondLabel.Click+=toggleSecond;
             if(showExtra){
@@ -760,15 +821,17 @@ namespace BlightfallPopsDesktop {
                     card.Controls.Add(SpellIcon("SR",statusX,29,iconSize,SoulReaperTip(entry),entry.SoulReaper));
                 card.Controls.Add(SpellIcon(entry.Beast?"BF":"SC",statusX+(statusCount-1)*(iconSize+3),29,iconSize,tip,active));
             }
-            int endY=AddHitRows(card,entry,first,baseHeight+2);
-            card.Height=Math.Max(baseHeight,endY+1);card.Controls[0].Height=card.Height;
+            ConfigureDetails(card,entry,first,baseHeight+2,baseHeight,firstLabel,secondLabel);
         }
         private void RefreshCards(bool followLatest=false){if(cards.IsDisposed)return;
             int oldScroll=scrollPixels;
             bool wasAtBottom=oldScroll>=Math.Max(0,totalContentHeight-cards.ClientSize.Height)-2;
             cards.SuspendLayout();
-            var oldCards=new List<Control>();foreach(Control existing in cards.Controls)oldCards.Add(existing);
-            cards.Controls.Clear();foreach(Control existing in oldCards)existing.Dispose();
+            var live=new HashSet<Entry>(tracker.Entries);
+            var stale=new List<Entry>();foreach(var entry in cardCache.Keys)if(!live.Contains(entry))stale.Add(entry);
+            foreach(var entry in stale){var state=cardCache[entry];cards.Controls.Remove(state.Card);state.Card.Dispose();cardCache.Remove(entry);}
+            foreach(var state in cardCache.Values)if(state.Entry.Beast&&!settings.ShowBeasts)state.Card.Visible=false;
+            visibleCards.Clear();
             int y=3;
             var ordered=new List<Entry>(tracker.Entries);
             ordered.Sort(delegate(Entry a,Entry b){
@@ -777,10 +840,22 @@ namespace BlightfallPopsDesktop {
                 return byTime!=0?byTime:a.Sequence.CompareTo(b.Sequence);
             });
             foreach(var entry in ordered){if(entry.Beast&&!settings.ShowBeasts)continue;
-                var card=new Panel{Left=3,Top=y,Width=Math.Max(260,cards.ClientSize.Width-7),BackColor=rowColor,Tag=y};
+                int width=Math.Max(260,cards.ClientSize.Width-7);
+                string signature=CardSignature(entry,width);CardState state;
+                if(!cardCache.TryGetValue(entry,out state)){
+                    state=new CardState{Entry=entry,Card=new BufferedPanel{Left=3,Width=width,BackColor=rowColor}};
+                    cardCache.Add(entry,state);state.Card.MouseWheel+=ScrollWheel;cards.Controls.Add(state.Card);
+                }
+                var card=state.Card;visibleCards.Add(state);card.Visible=true;card.Tag=y;card.Top=y-oldScroll;
+                if(state.Signature==signature){y+=card.Height+(ShowMiniCards?4:5);continue;}
+                card.SuspendLayout();
+                var oldControls=new List<Control>();foreach(Control control in card.Controls)oldControls.Add(control);
+                card.Controls.Clear();foreach(var control in oldControls)control.Dispose();state.Rows.Clear();
+                card.Width=width;state.Signature=signature;
                 if(ShowMiniCards){
                     RenderMiniCard(card,entry);
-                    HookWheel(card);cards.Controls.Add(card);y+=card.Height+4;
+                    foreach(Control child in card.Controls)if(!(child is Panel&&state.Rows.ContainsValue((Panel)child)))HookWheel(child);
+                    card.ResumeLayout();y+=card.Height+4;
                     continue;
                 }
                 card.Controls.Add(new Panel{Left=0,Top=0,Width=3,Height=90,BackColor=entry.Beast?red:green});
@@ -837,8 +912,8 @@ namespace BlightfallPopsDesktop {
                     Math.Max(44,(statusOnDamageRow?statusX-5:card.Width-8)-secondLabelX));
                 firstLabel.Cursor=secondLabel.Cursor=Cursors.Hand;card.Controls.Add(firstLabel);card.Controls.Add(secondLabel);
                 toolTip.SetToolTip(firstLabel,firstLabel.Text);toolTip.SetToolTip(secondLabel,secondLabel.Text);
-                EventHandler toggleFirst=delegate {entry.DOpen=!entry.DOpen;RefreshCards();};
-                EventHandler toggleSecond=delegate {entry.VOpen=!entry.VOpen;RefreshCards();};
+                EventHandler toggleFirst=delegate {ToggleDetails(entry,true);};
+                EventHandler toggleSecond=delegate {ToggleDetails(entry,false);};
                 firstLabel.Click+=toggleFirst;firstIcon.Cursor=Cursors.Hand;firstIcon.Click+=toggleFirst;
                 secondLabel.Click+=toggleSecond;secondIcon.Cursor=Cursors.Hand;secondIcon.Click+=toggleSecond;
                 if(showExtra){
@@ -850,9 +925,9 @@ namespace BlightfallPopsDesktop {
                     card.Controls.Add(SpellIcon(entry.Beast?"BF":"SC",statusX+(statusCount-1)*(iconSize+4),statusY,iconSize,tip,active));
                 }
                 int detailY=Math.Max(secondY,statusY)+iconSize+5;
-                detailY=AddHitRows(card,entry,first,detailY);
-                card.Height=Math.Max(90,detailY+2);card.Controls[0].Height=card.Height;
-                HookWheel(card);cards.Controls.Add(card);y+=card.Height+5;
+                ConfigureDetails(card,entry,first,detailY,90,firstLabel,secondLabel);
+                foreach(Control child in card.Controls)if(!(child is Panel&&state.Rows.ContainsValue((Panel)child)))HookWheel(child);
+                card.ResumeLayout();y+=card.Height+5;
             }
             totalContentHeight=y;cards.ResumeLayout();
             ScrollTo(followLatest&&wasAtBottom?Math.Max(0,totalContentHeight-cards.ClientSize.Height):oldScroll);
