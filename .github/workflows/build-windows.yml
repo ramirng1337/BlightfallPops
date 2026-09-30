@@ -25,7 +25,8 @@ jobs:
         shell: pwsh
         run: |
           $csc = "$env:WINDIR/Microsoft.NET/Framework/v4.0.30319/csc.exe"
-          & $csc /nologo /target:exe /codepage:65001 /main:TrackerTests /out:TrackerTests.exe /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Web.Extensions.dll /reference:System.IO.Compression.dll BlightfallPops.cs Updater.cs VersionInfo.cs Tests/TrackerTests.cs
+          $testSource = (Resolve-Path -LiteralPath ".\Tests\TrackerTests.cs").Path
+          & $csc /nologo /target:exe /codepage:65001 /main:TrackerTests /out:TrackerTests.exe /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Web.Extensions.dll /reference:System.IO.Compression.dll BlightfallPops.cs Updater.cs VersionInfo.cs $testSource
           if ($LASTEXITCODE -ne 0) { throw "Tracker test compilation failed" }
           & ./TrackerTests.exe
           if ($LASTEXITCODE -ne 0) { throw "Tracker regression tests failed" }
