@@ -222,6 +222,22 @@ namespace BlightfallPopsDesktop {
             if(pending==null)Notify();
         }
     }
+    // Separate transparent outline: the real event controls stay at their original size during a drag.
+    internal sealed class ResizeOutline : Form {
+        public ResizeOutline(){
+            FormBorderStyle=FormBorderStyle.None;ShowInTaskbar=false;StartPosition=FormStartPosition.Manual;
+            BackColor=Color.Magenta;TransparencyKey=Color.Magenta;DoubleBuffered=true;
+        }
+        protected override bool ShowWithoutActivation {get{return true;}}
+        protected override CreateParams CreateParams {get{
+            var p=base.CreateParams;p.ExStyle|=0x08000000|0x00000080|0x00000020;return p;
+        }}
+        protected override void WndProc(ref Message message){
+            if(message.Msg==0x0084){message.Result=(IntPtr)(-1);return;}
+            if(message.Msg==0x0021){message.Result=(IntPtr)3;return;}
+            base.WndProc(ref message);
+        }
+    }
     internal sealed class BufferedPanel : Panel {
         public BufferedPanel(){DoubleBuffered=true;ResizeRedraw=true;}
     }
@@ -275,7 +291,7 @@ namespace BlightfallPopsDesktop {
         private readonly Label status=new Label();
         private readonly Timer poll=new Timer();
         private readonly ToolTip toolTip=new ToolTip();
-        private bool dirty;
+        private bool dirty,refreshingCards;
         private Button lockButton,beastButton,collapseButton,miniButton,updateButton,logButton;
         private bool checkingUpdate,installingUpdate;
         private DateTime lastLogGrowthUtc=DateTime.MinValue;
@@ -284,7 +300,9 @@ namespace BlightfallPopsDesktop {
         private Image artwork;
         private readonly Dictionary<string,Image> spellIcons=new Dictionary<string,Image>();
         private Point? dragStart,resizeStart;
-        private Size resizeOrigin;
+        private Size resizeOrigin,resizeCandidate;
+        private ResizeOutline resizeOutline;
+        private readonly List<Entry> resizeSamples=new List<Entry>();
         private Point dragOrigin;
         private int scrollPixels,totalContentHeight;
         private bool scrollDragging;
@@ -368,9 +386,14 @@ namespace BlightfallPopsDesktop {
             grip.Size=new Size(18,18);grip.Anchor=AnchorStyles.Right|AnchorStyles.Bottom;
             grip.BackColor=Color.FromArgb(51,55,58);grip.Cursor=Cursors.SizeNWSE;
             grip.Paint+=delegate(object sender,PaintEventArgs e){using(var pen=new Pen(dim,1.5f)){e.Graphics.DrawLine(pen,5,15,15,5);e.Graphics.DrawLine(pen,10,15,15,10);}};
-            grip.MouseDown+=delegate(object sender,MouseEventArgs e){if(!settings.Locked&&e.Button==MouseButtons.Left){resizeStart=MousePosition;resizeOrigin=Size;grip.Capture=true;}};
-            grip.MouseMove+=delegate {if(resizeStart.HasValue&&!settings.Locked){var cursor=MousePosition;Size=new Size(Math.Max(MinimumSize.Width,resizeOrigin.Width+cursor.X-resizeStart.Value.X),Math.Max(MinimumSize.Height,resizeOrigin.Height+cursor.Y-resizeStart.Value.Y));}};
-            grip.MouseUp+=delegate {resizeStart=null;grip.Capture=false;Save();};
+            grip.MouseDown+=delegate(object sender,MouseEventArgs e){if(e.Button==MouseButtons.Left)BeginResizePreview();};
+            grip.MouseMove+=delegate {if(resizeStart.HasValue){
+                var cursor=MousePosition;
+                UpdateResizePreview(new Size(resizeOrigin.Width+cursor.X-resizeStart.Value.X,
+                    resizeOrigin.Height+cursor.Y-resizeStart.Value.Y));
+            }};
+            grip.MouseUp+=delegate(object sender,MouseEventArgs e){if(e.Button==MouseButtons.Left)EndResizePreview(true);};
+            grip.MouseCaptureChanged+=delegate {if(resizeStart.HasValue&&!grip.Capture)EndResizePreview(false);};
             Controls.Add(grip);grip.BringToFront();
             Resize+=delegate {
                 bool wasAtBottom=scrollPixels>=Math.Max(0,totalContentHeight-cards.ClientSize.Height)-2;
@@ -378,9 +401,9 @@ namespace BlightfallPopsDesktop {
                 if(wasAtBottom||ShowMiniCards&&cards.ClientSize.Height<=61)
                     ScrollTo(Math.Max(0,totalContentHeight-cards.ClientSize.Height));
             };Move+=delegate {if(Visible&&WindowState==FormWindowState.Normal)Save();};
-            FormClosing+=delegate {Save();poll.Stop();toolTip.Dispose();if(artwork!=null)artwork.Dispose();foreach(var image in spellIcons.Values)image.Dispose();foreach(var font in labelFonts.Values)font.Dispose();};
+            FormClosing+=delegate {EndResizePreview(false);Save();poll.Stop();toolTip.Dispose();if(artwork!=null)artwork.Dispose();foreach(var image in spellIcons.Values)image.Dispose();foreach(var font in labelFonts.Values)font.Dispose();};
             tracker.WindowMs=settings.WindowMs;tracker.Changed+=delegate {dirty=true;};
-            poll.Interval=350;poll.Tick+=delegate {try {if(settings.WatchLog&&settings.Log!=""){
+            poll.Interval=350;poll.Tick+=delegate {if(resizeStart.HasValue)return;try {if(settings.WatchLog&&settings.Log!=""){
                     long before=tracker.Position;
                     tracker.Tick(settings.Log);
                     if(tracker.Position>before)lastLogGrowthUtc=DateTime.UtcNow;
@@ -526,7 +549,7 @@ namespace BlightfallPopsDesktop {
         private void BeginMove(object sender,MouseEventArgs e){if(!settings.Locked&&e.Button==MouseButtons.Left){dragStart=MousePosition;dragOrigin=Location;}}
         private void MoveWindow(object sender,MouseEventArgs e){if(dragStart.HasValue&&!settings.Locked){var p=MousePosition;Location=new Point(dragOrigin.X+p.X-dragStart.Value.X,dragOrigin.Y+p.Y-dragStart.Value.Y);}}
         private void EndMove(object sender,MouseEventArgs e){dragStart=null;Save();}
-        private void ApplyLock(){grip.Visible=!settings.Locked;lockButton.Invalidate();}
+        private void ApplyLock(){if(settings.Locked)EndResizePreview(false);grip.Visible=!settings.Locked;lockButton.Invalidate();LayoutWindow();}
         private void ToggleOptions(){
             if(options.Visible){
                 options.Visible=false;
@@ -557,11 +580,98 @@ namespace BlightfallPopsDesktop {
             options.Bounds=new Rectangle(0,Math.Max(bar.Bottom,ClientSize.Height-options.Height),ClientSize.Width,options.Height);
             int bottom=options.Visible?options.Top:ClientSize.Height;
             cards.Bounds=new Rectangle(0,bar.Bottom,Math.Max(0,ClientSize.Width-12),Math.Max(0,bottom-bar.Bottom));
-            scrollTrack.Bounds=new Rectangle(Math.Max(0,ClientSize.Width-11),cards.Top,9,cards.Height);
+            // Reserve the lower corner for the resize grip instead of putting it over the scrollbar.
+            int trackBottom=settings.Locked?bottom:Math.Min(bottom,ClientSize.Height-grip.Height-4);
+            scrollTrack.Bounds=new Rectangle(Math.Max(0,ClientSize.Width-11),cards.Top,9,Math.Max(0,trackBottom-cards.Top));
             scrollTrack.Visible=totalContentHeight>cards.ClientSize.Height;
             grip.Location=new Point(ClientSize.Width-19,ClientSize.Height-19);grip.BringToFront();
             if(options.Visible)options.BringToFront();scrollTrack.BringToFront();bar.BringToFront();
             ScrollTo(scrollPixels);Invalidate();
+        }
+        private void BeginResizePreview(){
+            if(settings.Locked||resizeStart.HasValue)return;
+            resizeStart=MousePosition;resizeOrigin=Size;resizeCandidate=Size;
+            resizeSamples.Clear();
+            foreach(var state in visibleCards){
+                if(state.Card.Bottom>0&&state.Card.Top<cards.ClientSize.Height){
+                    resizeSamples.Add(state.Entry);if(resizeSamples.Count==2)break;
+                }
+            }
+            if(resizeSamples.Count==0&&visibleCards.Count>0)resizeSamples.Add(visibleCards[visibleCards.Count-1].Entry);
+            resizeOutline=new ResizeOutline{Bounds=new Rectangle(Location,resizeCandidate),TopMost=TopMost};
+            resizeOutline.Paint+=DrawResizePreview;
+            resizeOutline.Show(this);grip.Capture=true;
+        }
+        private void UpdateResizePreview(Size proposed){
+            if(!resizeStart.HasValue)return;
+            resizeCandidate=new Size(Math.Min(32767,Math.Max(MinimumSize.Width,proposed.Width)),
+                Math.Min(32767,Math.Max(MinimumSize.Height,proposed.Height)));
+            if(resizeOutline!=null){resizeOutline.Bounds=new Rectangle(Location,resizeCandidate);resizeOutline.Invalidate();}
+        }
+        private void EndResizePreview(bool apply){
+            if(!resizeStart.HasValue)return;
+            Size chosen=resizeCandidate;resizeStart=null;grip.Capture=false;
+            if(resizeOutline!=null){resizeOutline.Close();resizeOutline.Dispose();resizeOutline=null;}
+            resizeSamples.Clear();
+            if(apply){Size=chosen;Save();}
+        }
+        protected override bool ProcessCmdKey(ref Message message,Keys keyData){
+            if(keyData==Keys.Escape&&resizeStart.HasValue){EndResizePreview(false);return true;}
+            return base.ProcessCmdKey(ref message,keyData);
+        }
+        private int PreviewEventHeight(Entry entry,int width,bool mini){
+            int top,minimum;
+            if(mini){top=57;minimum=55;}
+            else{
+                int iconSize=settings.IconSize,secondX=Math.Max(168,width/2);
+                int count=entry.Beast?(settings.ShowBeastBlightfall?1:0):(settings.ShowSoulReaper?2:1);
+                int statusX=width-12-count*iconSize-(count-1)*4;
+                string second=(entry.VOpen?"▾ ":"▸ ")+(entry.Beast?"BiL":"VP")+" "+Format(entry.Beast?entry.Life:entry.Virulent);
+                int textWidth=TextRenderer.MeasureText(second,LabelFont(false)).Width;
+                bool extraRow=count>0&&statusX-(secondX+iconSize+5)-5<textWidth;
+                top=58+(extraRow?iconSize+5:0)+iconSize+5;minimum=90;
+            }
+            string first=entry.Beast?"CB":"DP";
+            foreach(var hit in entry.Hits){
+                if(!(hit.Kind==first?entry.DOpen:entry.VOpen))continue;
+                int size=Math.Min(32,Math.Max(23,settings.IconSize)),amountX=19+size;
+                int rowWidth=width-16,height=size+6;
+                int amountWidth=TextRenderer.MeasureText(Format(hit.Amount),LabelFont(false)).Width+6;
+                int critWidth=TextRenderer.MeasureText(hit.Crit?"Crit":"Hit",LabelFont(true)).Width+6;
+                int targetWidth=Math.Max(20,rowWidth-(amountX+amountWidth+6+critWidth+8)-8);
+                string target=string.IsNullOrWhiteSpace(hit.Target)?"Unknown target":hit.Target;
+                if(TextRenderer.MeasureText(target,LabelFont(false)).Width>targetWidth){
+                    int wrapped=TextRenderer.MeasureText(target,LabelFont(false),new Size(Math.Max(25,rowWidth-amountX-8),int.MaxValue),TextFormatFlags.WordBreak).Height;
+                    height=size+12+Math.Max(TextRenderer.MeasureText("Ag",LabelFont(false)).Height,wrapped);
+                }
+                if(settings.ShowOverkill&&hit.Overkill>0)
+                    height+=TextRenderer.MeasureText("Overkill: "+Format(hit.Overkill),LabelFont(false),
+                        new Size(Math.Max(25,rowWidth-amountX-8),int.MaxValue),TextFormatFlags.WordBreak).Height+5;
+                top+=height+2;
+            }
+            return Math.Max(minimum,top+2);
+        }
+        private void DrawResizePreview(object sender,PaintEventArgs e){
+            var size=resizeCandidate;bool mini=settings.MiniCards||size.Height-bar.Height<155;
+            using(var pen=new Pen(green,2)){
+                pen.DashStyle=System.Drawing.Drawing2D.DashStyle.Dash;
+                e.Graphics.DrawRectangle(pen,1,1,Math.Max(1,size.Width-3),Math.Max(1,size.Height-3));
+                string mode=mini?"Mini":"Normal";
+                TextRenderer.DrawText(e.Graphics,size.Width+" × "+size.Height+" · "+mode,LabelFont(true),
+                    new Rectangle(9,9,Math.Max(1,size.Width-18),25),green,TextFormatFlags.NoPrefix|TextFormatFlags.EndEllipsis);
+                int bottom=options.Visible?Math.Max(bar.Bottom,size.Height-options.Height):size.Height;
+                int y=Math.Max(38,bar.Bottom+3),width=Math.Max(260,size.Width-19);
+                foreach(var entry in resizeSamples){
+                    if(y>=bottom-4)break;
+                    int height=PreviewEventHeight(entry,width,mini),shown=Math.Min(height,bottom-y-4);
+                    e.Graphics.DrawRectangle(pen,3,y,width,Math.Max(1,shown));
+                    string name=entry.Beast?"Blood Beast":"Blightfall";
+                    TextRenderer.DrawText(e.Graphics,name+" #"+entry.Number+" · "+width+" × "+height+
+                        (shown<height?" · scroll to see more":""),LabelFont(false),
+                        new Rectangle(12,y+7,Math.Max(1,width-18),25),green,TextFormatFlags.NoPrefix|TextFormatFlags.EndEllipsis);
+                    y+=height+(mini?4:5);
+                }
+            }
         }
         private void ScrollWheel(object sender,MouseEventArgs e){ScrollTo(scrollPixels-Math.Sign(e.Delta)*Math.Max(28,settings.TextSize*3));}
         private void HookWheel(Control control){control.MouseWheel+=ScrollWheel;foreach(Control child in control.Controls)HookWheel(child);}
@@ -570,6 +680,14 @@ namespace BlightfallPopsDesktop {
             foreach(Control control in cards.Controls)if(control.Tag is int)control.Top=(int)control.Tag-scrollPixels;
             scrollTrack.Visible=totalContentHeight>cards.ClientSize.Height;
             scrollTrack.Invalidate();
+            // Build changed off-screen cards only when they enter the viewport.
+            if(!refreshingCards){
+                int width=Math.Max(260,cards.ClientSize.Width-7);
+                foreach(var state in visibleCards){
+                    if(state.Card.Bottom>=-80&&state.Card.Top<=cards.ClientSize.Height+80&&
+                        state.Signature!=CardSignature(state.Entry,width)){RefreshCards();break;}
+                }
+            }
         }
         private void ScrollFromTrack(int y){
             if(scrollTrack.Height<=0)return;
@@ -826,7 +944,8 @@ namespace BlightfallPopsDesktop {
         private void RefreshCards(bool followLatest=false){if(cards.IsDisposed)return;
             int oldScroll=scrollPixels;
             bool wasAtBottom=oldScroll>=Math.Max(0,totalContentHeight-cards.ClientSize.Height)-2;
-            cards.SuspendLayout();
+            refreshingCards=true;cards.SuspendLayout();
+            try{
             var live=new HashSet<Entry>(tracker.Entries);
             var stale=new List<Entry>();foreach(var entry in cardCache.Keys)if(!live.Contains(entry))stale.Add(entry);
             foreach(var entry in stale){var state=cardCache[entry];cards.Controls.Remove(state.Card);state.Card.Dispose();cardCache.Remove(entry);}
@@ -848,6 +967,12 @@ namespace BlightfallPopsDesktop {
                 }
                 var card=state.Card;visibleCards.Add(state);card.Visible=true;card.Tag=y;card.Top=y-oldScroll;
                 if(state.Signature==signature){y+=card.Height+(ShowMiniCards?4:5);continue;}
+                int predictedHeight=PreviewEventHeight(entry,width,ShowMiniCards);
+                if(y+predictedHeight<oldScroll-80||y>oldScroll+cards.ClientSize.Height+80){
+                    // Retain lightweight geometry; defer control construction and wrapping until visible.
+                    card.Width=width;card.Height=predictedHeight;
+                    y+=predictedHeight+(ShowMiniCards?4:5);continue;
+                }
                 card.SuspendLayout();
                 var oldControls=new List<Control>();foreach(Control control in card.Controls)oldControls.Add(control);
                 card.Controls.Clear();foreach(var control in oldControls)control.Dispose();state.Rows.Clear();
@@ -929,7 +1054,8 @@ namespace BlightfallPopsDesktop {
                 foreach(Control child in card.Controls)if(!(child is Panel&&state.Rows.ContainsValue((Panel)child)))HookWheel(child);
                 card.ResumeLayout();y+=card.Height+5;
             }
-            totalContentHeight=y;cards.ResumeLayout();
+            totalContentHeight=y;
+            }finally{cards.ResumeLayout();refreshingCards=false;}
             ScrollTo(followLatest&&wasAtBottom?Math.Max(0,totalContentHeight-cards.ClientSize.Height):oldScroll);
         }
         protected override void OnPaint(PaintEventArgs e){base.OnPaint(e);

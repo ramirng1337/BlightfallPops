@@ -7,6 +7,7 @@ class UiPerformanceTests {
  static int checks;
  static readonly BindingFlags Hidden=BindingFlags.NonPublic|BindingFlags.Instance;
  static object Field(object o,string name){return o.GetType().GetField(name,Hidden|BindingFlags.Public).GetValue(o);}
+ static void Set(object o,string name,object value){o.GetType().GetField(name,Hidden|BindingFlags.Public).SetValue(o,value);}
  static void Call(object o,string name,params object[] args){o.GetType().GetMethod(name,Hidden).Invoke(o,args);}
  static void Assert(bool ok,string message){if(!ok)throw new Exception(message);checks++;}
  static Entry MakeEntry(int n){var e=new Entry{Number=n,Sequence=n,Time=new DateTime(2026,9,30,12,0,n),Segment="Test",Dread=100,Virulent=200};
@@ -29,6 +30,8 @@ class UiPerformanceTests {
  Call(overlay,"ToggleDetails",first,true);Assert(card.Height==height,"Closing restores exact height");
  Call(overlay,"ToggleDetails",first,true);Assert(Object.ReferenceEquals(row,rows[first.Hits[0]]),"Reopening reuses hit row");
  Call(overlay,"ToggleDetails",first,false);Assert(rows.Count==2,"Second dropdown creates only missing row");
+ int openHeight=(int)overlay.GetType().GetMethod("PreviewEventHeight",Hidden).Invoke(overlay,new object[]{first,card.Width,mini});
+ Assert(openHeight==card.Height,"Preview matches expanded event height in both modes");
  tracker.Entries.Add(MakeEntry(3));Call(overlay,"RefreshCards",true);
  Assert(Object.ReferenceEquals(secondCard,Card(cache,next)),"Appending retains historical card");
  Assert(Object.ReferenceEquals(row,rows[first.Hits[0]]),"Appending retains open hit row");
@@ -43,6 +46,38 @@ class UiPerformanceTests {
  Assert(cache.Count==0,"Session reset removes all cached cards");Assert(card.IsDisposed&&secondCard.IsDisposed,"Reset disposes historical cards");
  Assert(tracker.Entries.Count==0,"Session reset clears tracker");Assert(overlay.Size==size,"Reset preserves window size");
  }
+ // Resizing changes geometry once at release, with only visible cards rebuilt.
+ settings.MiniCards=false;settings.ShowBeasts=true;tracker.Reset();
+ for(int i=1;i<=120;i++)tracker.Entries.Add(MakeEntry((i-1)%59+1));
+ Call(overlay,"RefreshCards",false);
+ var firstEntry=tracker.Entries[0];var distant=tracker.Entries[100];
+ var firstPanel=Card(cache,firstEntry);var distantPanel=Card(cache,distant);
+ Assert(firstPanel.Controls.Count>0,"Visible event rendered");
+ Assert(distantPanel.Controls.Count==0,"Offscreen event defers control creation");
+ var track=(Control)Field(overlay,"scrollTrack");var grip=(Control)Field(overlay,"grip");
+ Assert(!track.Bounds.IntersectsWith(grip.Bounds),"Scrollbar and resize grip do not overlap");
+ int predicted=(int)overlay.GetType().GetMethod("PreviewEventHeight",Hidden).Invoke(overlay,new object[]{firstEntry,firstPanel.Width,false});
+ Assert(predicted==firstPanel.Height,"Preview predicts normal event height");
+ var oldSize=overlay.Size;var header=firstPanel.Controls[0];
+ Set(overlay,"resizeStart",new System.Drawing.Point(0,0));Set(overlay,"resizeCandidate",oldSize);
+ Call(overlay,"UpdateResizePreview",new System.Drawing.Size(oldSize.Width+80,oldSize.Height+40));
+ Assert(overlay.Size==oldSize,"Preview drag does not resize actual window");
+ Assert(Object.ReferenceEquals(header,firstPanel.Controls[0]),"Preview drag does not rebuild events");
+ Call(overlay,"EndResizePreview",false);Assert(overlay.Size==oldSize,"Cancel preserves size");
+ Set(overlay,"resizeStart",new System.Drawing.Point(0,0));
+ Call(overlay,"UpdateResizePreview",new System.Drawing.Size(oldSize.Width+80,oldSize.Height+40));
+ Call(overlay,"EndResizePreview",true);
+ Assert(overlay.Width==oldSize.Width+80&&overlay.Height==oldSize.Height+40,"Release applies preview size");
+ Assert(Object.ReferenceEquals(firstPanel,Card(cache,firstEntry)),"Commit reuses outer card");
+ Assert(distantPanel.Controls.Count==0,"Commit leaves distant cards deferred");
+ Call(overlay,"ScrollTo",(int)distantPanel.Tag);
+ Assert(distantPanel.Controls.Count>0,"Scrolling renders deferred event");
+ var distantHeader=distantPanel.Controls[0];overlay.Height+=40;
+ Assert(Object.ReferenceEquals(distantHeader,distantPanel.Controls[0]),"Height-only resize reuses event controls");
+ settings.Locked=true;Call(overlay,"ApplyLock");Assert(!grip.Visible,"Lock hides resize handle");
+ Assert(track.Bottom<=((Control)Field(overlay,"cards")).Bottom,"Locked scrollbar fits event area");
+ settings.Locked=false;Call(overlay,"ApplyLock");Assert(!track.Bounds.IntersectsWith(grip.Bounds),"Unlock keeps dedicated resize corner");
+ Call(overlay,"ResetSession");Assert(cache.Count==0,"Reset clears deferred and rendered cards");
  }
  Console.WriteLine("Passed "+checks+" UI performance checks");
  }

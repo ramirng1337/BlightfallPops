@@ -55,3 +55,13 @@ show this breakdown when the log records overkill.
 The tracker also accepts final Erupt hits arriving after an encounter-end
 marker, within the original Blightfall matching window. Damage parsing no
 longer relies on a minimum row length to detect advanced logging.
+
+RESIZE PREVIEW (v1.0.0.7)
+Drag the lower-right triangle to preview a size using a transparent outline.
+The window and events keep their current size until you release the mouse.
+The preview shows normal/mini mode and dimensions of current event cards,
+including open hit details. Release to apply; losing mouse capture cancels.
+Escape also cancels when keyboard input is going to the overlay.
+The scrollbar stops above the resize handle while unlocked. Locked windows
+hide the handle and restore the scrollbar's full height. Event controls
+outside the visible area update their layout when you scroll to them.
