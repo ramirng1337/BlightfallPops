@@ -31,6 +31,17 @@ jobs:
           & ./TrackerTests.exe
           if ($LASTEXITCODE -ne 0) { throw "Tracker regression tests failed" }
 
+      - name: Test reusable cards and session reset
+        working-directory: Blightpops-Overlay
+        shell: pwsh
+        run: |
+          $csc = "$env:WINDIR/Microsoft.NET/Framework/v4.0.30319/csc.exe"
+          $testSource = (Resolve-Path -LiteralPath ".\Tests\UiPerformanceTests.cs").Path
+          & $csc /nologo /target:exe /codepage:65001 /main:UiPerformanceTests /out:UiPerformanceTests.exe /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Web.Extensions.dll /reference:System.IO.Compression.dll BlightfallPops.cs Updater.cs VersionInfo.cs $testSource
+          if ($LASTEXITCODE -ne 0) { throw "UI test compilation failed" }
+          & ./UiPerformanceTests.exe
+          if ($LASTEXITCODE -ne 0) { throw "UI performance regression tests failed" }
+
       - name: Check release version
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
