@@ -1,5 +1,3 @@
-## Preview
-
 ![Blightfall Pops overlay](overlay.png.png)
 
 ## Toolbar and settings guide
