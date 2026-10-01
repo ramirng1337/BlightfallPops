@@ -1,4 +1,4 @@
-// Blightfall Pops desktop overlay: .NET Framework 4.8, Windows Forms, no PowerShell.
+﻿// Blightfall Pops desktop overlay: .NET Framework 4.8, Windows Forms, no PowerShell.
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -27,7 +27,7 @@ namespace BlightfallPopsDesktop {
     }
     internal sealed class Settings {
         public int Width=500, Height=390, X=int.MinValue, Y=int.MinValue, WindowMs=1200, IconSize=26, TextSize=10;
-        public bool Locked=false, AlwaysOnTop=true, WatchLog=true, ShowBeasts=true, ShowBeastBlightfall=true, ShowSoulReaper=false, ShowScythe=true, ShowOverkill=false, CompactNumbers=true, Collapsed=false, GroupByEventType=false, MiniCards=false;
+        public bool Locked=false, AlwaysOnTop=true, WatchLog=true, ShowBeasts=true, ShowBeastBlightfall=true, ShowSoulReaper=false, ShowScythe=true, ShowOverkill=false, CompactNumbers=true, Collapsed=false, GroupByEventType=false, MiniCards=true;
         public string Log="";
         public static readonly string DirectoryPath=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"BlightfallPopsDesktop");
         public static Settings Load() {
@@ -40,7 +40,7 @@ namespace BlightfallPopsDesktop {
                 else if (int.TryParse(value,out n)) {
                     switch(key) { case "Width": s.Width=n;break;case "Height":s.Height=n;break;case "X":s.X=n;break;case "Y":s.Y=n;break;case "WindowMs":s.WindowMs=n;break;case "IconSize":s.IconSize=n;break;case "TextSize":s.TextSize=n;break; }
                 } else if(bool.TryParse(value,out b)) {
-                    switch(key) { case "Locked":s.Locked=b;break;case "AlwaysOnTop":s.AlwaysOnTop=b;break;case "WatchLog":s.WatchLog=b;break;case "ShowBeasts":s.ShowBeasts=b;break;case "ShowBeastBlightfall":s.ShowBeastBlightfall=b;break;case "ShowSoulReaper":s.ShowSoulReaper=b;break;case "ShowScythe":s.ShowScythe=b;break;case "ShowOverkill":s.ShowOverkill=b;break;case "CompactNumbers":s.CompactNumbers=b;break;case "Collapsed":s.Collapsed=b;break;case "GroupByEventType":s.GroupByEventType=b;break;case "MiniCards":s.MiniCards=b;break; }
+                    switch(key) { case "Locked":s.Locked=b;break;case "AlwaysOnTop":s.AlwaysOnTop=b;break;case "WatchLog":s.WatchLog=b;break;case "ShowBeasts":s.ShowBeasts=b;break;case "ShowBeastBlightfall":s.ShowBeastBlightfall=b;break;case "ShowSoulReaper":s.ShowSoulReaper=b;break;case "ShowScythe":s.ShowScythe=b;break;case "ShowOverkill":s.ShowOverkill=b;break;case "CompactNumbers":s.CompactNumbers=b;break;case "Collapsed":s.Collapsed=b;break;case "GroupByEventType":s.GroupByEventType=b;break;case "ExtraDetails":s.MiniCards=!b;break; }
                 }
             }
             s.Width=Math.Max(340,Math.Min(2000,s.Width));s.Height=Math.Max(70,Math.Min(1500,s.Height));
@@ -53,7 +53,7 @@ namespace BlightfallPopsDesktop {
             var lines=new [] { "Log="+Log,"Width="+Width,"Height="+Height,"X="+X,"Y="+Y,"WindowMs="+WindowMs,
                 "IconSize="+IconSize,"TextSize="+TextSize,"Locked="+Locked,"AlwaysOnTop="+AlwaysOnTop,"WatchLog="+WatchLog,"ShowBeasts="+ShowBeasts,
                 "ShowBeastBlightfall="+ShowBeastBlightfall,"ShowSoulReaper="+ShowSoulReaper,"ShowScythe="+ShowScythe,"ShowOverkill="+ShowOverkill,"CompactNumbers="+CompactNumbers,"Collapsed="+Collapsed,
-                "GroupByEventType="+GroupByEventType,"MiniCards="+MiniCards };
+                "GroupByEventType="+GroupByEventType,"ExtraDetails="+(!MiniCards) };
             File.WriteAllLines(Path.Combine(DirectoryPath,"settings.txt"),lines,Encoding.UTF8);
         }
     }
@@ -303,8 +303,7 @@ namespace BlightfallPopsDesktop {
         private int scrollPixels,totalContentHeight;
         private bool scrollDragging;
         private int compactHeightBeforeOptions;
-        private bool AutoMiniCards {get{return ClientSize.Height-bar.Height<155;}}
-        private bool ShowMiniCards {get{return settings.MiniCards||AutoMiniCards;}}
+        private bool ShowMiniCards {get{return settings.MiniCards;}}
         private readonly Color background=Color.FromArgb(18,20,24),rowColor=Color.FromArgb(34,38,44),dim=Color.FromArgb(178,183,183);
         private static readonly Color green=Color.FromArgb(134,218,130),red=Color.FromArgb(230,87,83);
         private const int NoActivateStyle=0x08000000,AppWindowStyle=0x00040000;
@@ -360,11 +359,10 @@ namespace BlightfallPopsDesktop {
             logButton.Paint+=PaintLogButton;
             DrawToolbarIcon(AddAction(actions,"","Options",dim,delegate {ToggleOptions();}),"options");
             // RightToLeft flow places the last added control at the far left.
-            miniButton=AddAction(actions,"","Toggle two-line mini cards",dim,delegate {
-                if(AutoMiniCards)return; // The compact window cannot fit full cards.
+            miniButton=AddAction(actions,"","Extra details: show or hide pull names and larger events",dim,delegate {
                 settings.MiniCards=!settings.MiniCards;scrollPixels=0;miniButton.Invalidate();RefreshCards();Save();
             });
-            DrawToolbarIcon(miniButton,"mini");
+            DrawToolbarIcon(miniButton,"details");
             cards.BackColor=background;cards.Padding=new Padding(7,3,7,6);Controls.Add(cards);
             cards.MouseWheel+=ScrollWheel;
             scrollTrack.BackColor=background;scrollTrack.Paint+=PaintScrollTrack;
@@ -416,7 +414,7 @@ namespace BlightfallPopsDesktop {
             button.Text="";
             button.Paint+=delegate(object sender,PaintEventArgs e){
                 e.Graphics.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                using(var pen=new Pen(kind=="close"?red:kind=="mini"&&ShowMiniCards?green:dim,2.2f)){
+                using(var pen=new Pen(kind=="close"?red:kind=="details"&&!ShowMiniCards?green:dim,2.2f)){
                     if(kind=="folder"){
                         e.Graphics.DrawLines(pen,new[]{new Point(5,9),new Point(11,9),new Point(13,11),new Point(25,11),new Point(25,23),new Point(5,23),new Point(5,9)});
                         e.Graphics.DrawLine(pen,6,14,24,14);
@@ -436,7 +434,7 @@ namespace BlightfallPopsDesktop {
                         }
                         using(var brush=new SolidBrush(dim))e.Graphics.FillPolygon(brush,teeth);
                         using(var hole=new SolidBrush(button.BackColor))e.Graphics.FillEllipse(hole,12,11,7,7);
-                    }else if(kind=="mini"){
+                    }else if(kind=="details"){
                         e.Graphics.DrawRectangle(pen,6,7,5,5);
                         e.Graphics.DrawRectangle(pen,6,17,5,5);
                         e.Graphics.DrawLine(pen,14,10,25,10);
@@ -582,6 +580,8 @@ namespace BlightfallPopsDesktop {
             scrollTrack.Visible=totalContentHeight>cards.ClientSize.Height;
             grip.Location=new Point(ClientSize.Width-19,ClientSize.Height-19);grip.BringToFront();
             if(options.Visible)options.BringToFront();scrollTrack.BringToFront();bar.BringToFront();
+            // Keep the resize corner above the options panel as well as the event area.
+            grip.BringToFront();
             ScrollTo(scrollPixels);Invalidate();
         }
         private void BeginResizePreview(){
@@ -639,9 +639,10 @@ namespace BlightfallPopsDesktop {
                 if(g.IconSize>18){g.IconSize--;continue;}
                 break;
             }
-            g.DamageTop=Math.Max(32,TextRenderer.MeasureText("Ag",LabelFont(true)).Height+6);
-            g.EncounterTop=g.DamageTop+Math.Max(g.IconSize,TextRenderer.MeasureText("Ag",SizedFont(g.TextSize,false)).Height+2)+5;
-            g.BaseHeight=g.EncounterTop+TextRenderer.MeasureText("Ag",LabelFont(false)).Height+6;
+            g.EncounterTop=3;
+            int headingTop=TextRenderer.MeasureText("Ag",LabelFont(false)).Height+10;
+            g.DamageTop=headingTop+Math.Max(32,TextRenderer.MeasureText("Ag",LabelFont(true)).Height+6);
+            g.BaseHeight=g.DamageTop+Math.Max(g.IconSize,TextRenderer.MeasureText("Ag",SizedFont(g.TextSize,false)).Height+2)+6;
             return g;
         }
         private int PreviewEventHeight(Entry entry,int width,bool mini){
@@ -669,11 +670,11 @@ namespace BlightfallPopsDesktop {
             return Math.Max(minimum,top+2);
         }
         private void DrawResizePreview(object sender,PaintEventArgs e){
-            var size=resizeCandidate;bool mini=settings.MiniCards||size.Height-bar.Height<155;
+            var size=resizeCandidate;bool mini=settings.MiniCards;
             using(var pen=new Pen(green,2)){
                 pen.DashStyle=System.Drawing.Drawing2D.DashStyle.Dash;
                 e.Graphics.DrawRectangle(pen,1,1,Math.Max(1,size.Width-3),Math.Max(1,size.Height-3));
-                string mode=mini?"Mini":"Normal";
+                string mode=mini?"Compact":"Extra details";
                 TextRenderer.DrawText(e.Graphics,size.Width+" × "+size.Height+" · "+mode,LabelFont(true),
                     new Rectangle(9,9,Math.Max(1,size.Width-18),25),green,TextFormatFlags.NoPrefix|TextFormatFlags.EndEllipsis);
                 int bottom=options.Visible?Math.Max(bar.Bottom,size.Height-options.Height):size.Height;
@@ -903,6 +904,7 @@ namespace BlightfallPopsDesktop {
             var geometry=large?LargeSummaryLayout(entry,card.Width):null;
             int baseHeight=large?geometry.BaseHeight:55;
             int damageTop=large?geometry.DamageTop:29;
+            int headingTop=large?TextRenderer.MeasureText("Ag",LabelFont(false)).Height+10:1;
             card.Controls.Add(new Panel{Left=0,Top=0,Width=3,Height=baseHeight,BackColor=entry.Beast?red:green});
             string title=entry.Beast?"Beast #"+entry.Number:"#"+entry.Number+"  "+entry.Time.ToString("HH:mm:ss");
             string total=Format(entry.Beast?entry.Corrupted+entry.Life:entry.Dread+entry.Virulent);
@@ -920,17 +922,17 @@ namespace BlightfallPopsDesktop {
             int totalX=statusRight-totalLabelWidth;
             int secondX=large?geometry.SecondX:DamageColumnX(entry,card.Width,true,iconSize);
             int countX=secondX-3; // Label text has a small inset; its glyph matches the icon edge.
-            var eventIcon=SpellIcon(entry.Beast?"BB":"BF",9,large?Math.Max(3,(damageTop+iconSize-44)/2):9,large?44:36);
+            var eventIcon=SpellIcon(entry.Beast?"BB":"BF",9,large?headingTop+Math.Max(0,(baseHeight-headingTop-44)/2):9,large?44:36);
             if(!string.IsNullOrEmpty(entry.Segment))toolTip.SetToolTip(eventIcon,entry.Segment);
             card.Controls.Add(eventIcon);
-            var titleLabel=Label(title,Color.White,large?60:52,1,Math.Max(30,(entry.Beast?totalX:countX)-(large?65:57)),true);
+            var titleLabel=Label(title,Color.White,large?60:52,headingTop,Math.Max(30,(entry.Beast?totalX:countX)-(large?65:57)),true);
             toolTip.SetToolTip(titleLabel,title+(entry.Segment==""?"":" — "+entry.Segment));
             card.Controls.Add(titleLabel);
-            var totalLabel=Label(total,green,totalX,1,totalLabelWidth,true);
+            var totalLabel=Label(total,green,totalX,headingTop,totalLabelWidth,true);
             totalLabel.TextAlign=ContentAlignment.TopRight;
             card.Controls.Add(totalLabel);
             if(!entry.Beast){
-                var countLabel=Label(hits,dim,countX,3,hitsWidth+3);
+                var countLabel=Label(hits,dim,countX,headingTop+2,hitsWidth+3);
                 if(large){int size=settings.TextSize;while(size>8&&countX+TextRenderer.MeasureText(hits,SizedFont(size,false)).Width+5>totalX)size--;
                     countLabel.Font=SizedFont(size,false);countLabel.Width=TextRenderer.MeasureText(hits,countLabel.Font).Width+3;}
                 countLabel.Height=TextRenderer.MeasureText("Ag",countLabel.Font).Height+2;card.Controls.Add(countLabel);
@@ -965,7 +967,8 @@ namespace BlightfallPopsDesktop {
                 if(entry.Beast||settings.ShowScythe)card.Controls.Add(SpellIcon(entry.Beast?"BF":"SC",statusX+(statusCount-1)*(iconSize+3),damageTop,iconSize,tip,active));
             }
             if(large){
-                var segment=Label(entry.Segment??"",dim,60,geometry.EncounterTop,card.Width-69);
+                var segment=Label(entry.Segment??"",dim,9,geometry.EncounterTop,card.Width-18);
+                segment.TextAlign=ContentAlignment.TopCenter;
                 segment.Height=TextRenderer.MeasureText("Ag",segment.Font).Height+2;
                 toolTip.SetToolTip(segment,entry.Segment??"");card.Controls.Add(segment);
             }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Reflection;
 using System.Windows.Forms;
@@ -69,6 +69,7 @@ class UiPerformanceTests {
  Assert(aligned,"Hit count stays aligned above VP");
  }
  // Narrow normal cards must keep both amounts and the complete count readable.
+ Assert(new Settings().MiniCards,"Compact events are the default");
  settings.MiniCards=false;settings.ShowSoulReaper=true;settings.ShowScythe=true;
  foreach(int windowWidth in new[]{340,385,500})foreach(int textSize in new[]{10,14,18})foreach(int iconSize in new[]{18,40})foreach(bool beastLayout in new[]{false,true}){
  tracker.Reset();var sample=MakeEntry(1);sample.Beast=beastLayout;sample.Dread=10500000;sample.Virulent=10100000;
@@ -83,7 +84,7 @@ class UiPerformanceTests {
  PictureBox firstDamage=null,secondDamage=null;
  foreach(Control child in panel.Controls){if((child.Tag as string)==(beastLayout?"CB":"DP"))firstDamage=child as PictureBox;if((child.Tag as string)==(beastLayout?"BiL":"VP"))secondDamage=child as PictureBox;}
  Assert(firstDamage.Top==secondDamage.Top,"Normal spell icons never stack");
- bool encounter=false;foreach(Control child in panel.Controls)if(child.Text==sample.Segment){encounter=true;Assert(child.Top>right.Bottom,"Encounter text sits below damage row");}
+ bool encounter=false;foreach(Control child in panel.Controls)if(child.Text==sample.Segment){encounter=true;Assert(child.Bottom<firstDamage.Top,"Pull name sits above the event data");Assert(((Label)child).TextAlign==System.Drawing.ContentAlignment.TopCenter,"Pull name is centered");}
  Assert(encounter,"Normal summary includes encounter text");
  Assert(left.Right<=panel.Width-8&&right.Right<=panel.Width-8,"Damage stays inside normal card");
  if(!beastLayout){bool found=false;foreach(Control child in panel.Controls){var label=child as Label;
@@ -127,6 +128,10 @@ class UiPerformanceTests {
  settings.Locked=true;Call(overlay,"ApplyLock");Assert(!grip.Visible,"Lock hides resize handle");
  Assert(track.Bottom<=((Control)Field(overlay,"cards")).Bottom,"Locked scrollbar fits event area");
  settings.Locked=false;Call(overlay,"ApplyLock");Assert(!track.Bounds.IntersectsWith(grip.Bounds),"Unlock keeps dedicated resize corner");
+ Call(overlay,"ToggleOptions");var optionsPanel=(Control)Field(overlay,"options");
+ Assert(overlay.Controls.GetChildIndex(grip)<overlay.Controls.GetChildIndex(optionsPanel),"Resize handle stays above open options");
+ overlay.Width+=10;Assert(overlay.Controls.GetChildIndex(grip)<overlay.Controls.GetChildIndex(optionsPanel),"Resize handle stays above options after resizing");
+ Call(overlay,"ToggleOptions");
  Call(overlay,"ResetSession");Assert(cache.Count==0,"Reset clears deferred and rendered cards");
  }
  Console.WriteLine("Passed "+checks+" UI performance checks");
