@@ -62,8 +62,9 @@ class UiPerformanceTests {
  settings.MiniCards=miniLayout;Call(overlay,"RefreshCards",false);
  var state=cache[millions];var panel=Card(cache,millions);var firstLabel=(Label)Field(state,"FirstLabel");var secondLabel=(Label)Field(state,"SecondLabel");
  Assert(firstLabel.Width>=TextRenderer.MeasureText(firstLabel.Text,firstLabel.Font).Width,"10M first damage value has enough width");
- int secondX=(int)overlay.GetType().GetMethod("DamageColumnX",Hidden).Invoke(overlay,new object[]{millions,panel.Width,miniLayout,miniLayout?23:settings.IconSize});
- Assert(secondX==secondLabel.Left-(miniLayout?27:28),"Second icon follows responsive column");
+ PictureBox secondIcon=null;foreach(Control child in panel.Controls)if((child.Tag as string)=="VP")secondIcon=child as PictureBox;
+ int secondX=secondIcon.Left;
+ Assert(secondLabel.Left==secondX+secondIcon.Width+4,"Second number follows VP icon");
  bool aligned=false;foreach(Control child in panel.Controls){var label=child as Label;if(label!=null&&label.Text.EndsWith(" hits"))aligned=label.Left==secondX-3;}
  Assert(aligned,"Hit count stays aligned above VP");
  }
@@ -78,10 +79,17 @@ class UiPerformanceTests {
  Assert(left.Width>=TextRenderer.MeasureText(left.Text,left.Font).Width,"Narrow normal first damage fits");
  Assert(right.Width>=TextRenderer.MeasureText(right.Text,right.Font).Width,"Narrow normal second damage fits");
  Assert(!left.Bounds.IntersectsWith(right.Bounds),"Damage labels never overlap");
+ Assert(left.Top==right.Top,"Normal damage values always share one row");
+ PictureBox firstDamage=null,secondDamage=null;
+ foreach(Control child in panel.Controls){if((child.Tag as string)==(beastLayout?"CB":"DP"))firstDamage=child as PictureBox;if((child.Tag as string)==(beastLayout?"BiL":"VP"))secondDamage=child as PictureBox;}
+ Assert(firstDamage.Top==secondDamage.Top,"Normal spell icons never stack");
+ bool encounter=false;foreach(Control child in panel.Controls)if(child.Text==sample.Segment){encounter=true;Assert(child.Top>right.Bottom,"Encounter text sits below damage row");}
+ Assert(encounter,"Normal summary includes encounter text");
  Assert(left.Right<=panel.Width-8&&right.Right<=panel.Width-8,"Damage stays inside normal card");
  if(!beastLayout){bool found=false;foreach(Control child in panel.Controls){var label=child as Label;
  if(label!=null&&label.Text.EndsWith(" hits")){found=true;Assert(label.Width>=TextRenderer.MeasureText(label.Text,label.Font).Width,"Hit count never ellipsizes");
- Assert(label.Left==right.Left-iconSize-8,"Hit counter follows VP column");}}
+ PictureBox vp=null;foreach(Control item in panel.Controls)if((item.Tag as string)=="VP")vp=item as PictureBox;
+ Assert(label.Left==vp.Left-3,"Hit counter follows VP column");}}
  Assert(found,"Normal card has complete hit count");}
  int predictedHeight=(int)overlay.GetType().GetMethod("PreviewEventHeight",Hidden).Invoke(overlay,new object[]{sample,panel.Width,false});
  Assert(predictedHeight==panel.Height,"Responsive resize preview matches actual card height");
