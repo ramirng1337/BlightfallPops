@@ -34,10 +34,6 @@ This is a Windows desktop overlay that reads a local combat log. It is not a
 WoW addon and does not install into the game's AddOns folder. The EXE contains
 the spell art and character icon; no other files are needed to run it.
 
-Source code and more detailed usage notes are in the public project repository.
-For each new release, update VersionInfo.cs to match the GitHub tag (for example,
-1.0.0.5 for v1.0.0.5), run Build Once.cmd, and attach a BlightfallPops.zip that
-contains the newly built BlightfallPops.exe. This keeps update checks accurate.
 
 OVERKILL DISPLAY (v1.0.0.5)
 
