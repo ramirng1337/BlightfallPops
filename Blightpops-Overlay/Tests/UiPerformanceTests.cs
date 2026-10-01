@@ -86,6 +86,10 @@ class UiPerformanceTests {
  Assert(firstDamage.Left==secondDamage.Left&&secondDamage.Top>firstDamage.Top,"Extra detail spell icons share one column");
  bool encounter=false;foreach(Control child in panel.Controls)if(child.Text==sample.Segment){encounter=true;Assert(child.Bottom<firstDamage.Top,"Pull name sits above the event data");Assert(child.Font.Bold,"Pull name is bold");}
  Assert(encounter,"Normal summary includes encounter text");
+ string expectedTitle=beastLayout?"Beast #1":sample.Time.ToString("HH:mm:ss")+" #1";bool headerFound=false;
+ foreach(Control child in panel.Controls)if(child.Text==expectedTitle){headerFound=true;Assert(child.Left==6,"Extra-detail header starts at the left edge");}
+ Assert(headerFound,"Blightfall header uses timestamp before event number");
+ Assert(firstDamage.Left==55,"Damage column sits close beside large event icon");
  bool critCount=false;foreach(Control child in panel.Controls)if(child.Text=="1 crit"){critCount=true;Assert(child.ForeColor==System.Drawing.Color.Gold,"Crit count is yellow");Assert(child.Top==right.Top,"Crit count sits beside second damage row");}
  Assert(critCount,"Extra details include crit count");
  Assert(left.Right<=panel.Width-8&&right.Right<=panel.Width-8,"Damage stays inside normal card");
