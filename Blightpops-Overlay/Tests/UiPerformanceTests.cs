@@ -144,7 +144,13 @@ class UiPerformanceTests {
  settings.MiniCards=false;Call(overlay,"RefreshCards",false);var beastPanel=Card(cache,meleeCard);int closedMeleeHeight=beastPanel.Height;
  bool hasMeleeIcon=false;foreach(Control child in beastPanel.Controls)if((child.Tag as string)=="ME")hasMeleeIcon=true;
  Assert(hasMeleeIcon,"Extra-detail beast has melee row");Call(overlay,"ToggleMeleeDetails",meleeCard);
- var meleeRows=(IDictionary)Field(cache[meleeCard],"Rows");Assert(meleeRows.Contains(meleeHit)&&((Control)meleeRows[meleeHit]).Visible,"Melee dropdown shows target hit");
+ var meleeRows=(IDictionary)Field(cache[meleeCard],"Rows");Assert(meleeRows.Contains(meleeHit),"Melee dropdown creates target hit row");
+ var expandedMeleeRow=(Control)meleeRows[meleeHit];
+ // Visible inherits the hidden test form's state. Check the expansion geometry instead.
+ Assert(meleeCard.MOpen&&expandedMeleeRow.Parent==beastPanel&&beastPanel.Height>closedMeleeHeight,"Melee dropdown expands the card");
+ Assert(expandedMeleeRow.Top==(int)Field(cache[meleeCard],"DetailsTop")&&expandedMeleeRow.Bottom<beastPanel.Height,"Melee target row occupies expanded detail area");
+ bool meleeTargetFound=false;foreach(Control child in expandedMeleeRow.Controls)if(child.Text==meleeHit.Target)meleeTargetFound=true;
+ Assert(meleeTargetFound,"Melee dropdown includes the hit target");
  Assert(beastPanel.Height==(int)overlay.GetType().GetMethod("PreviewEventHeight",Hidden).Invoke(overlay,new object[]{meleeCard,beastPanel.Width,false}),"Preview includes melee dropdown");
  var cachedMeleeRow=meleeRows[meleeHit];Call(overlay,"ToggleMeleeDetails",meleeCard);Assert(beastPanel.Height==closedMeleeHeight,"Closing melee dropdown restores card height");
  Call(overlay,"ToggleMeleeDetails",meleeCard);Assert(Object.ReferenceEquals(cachedMeleeRow,meleeRows[meleeHit]),"Melee dropdown reuses hit row");
