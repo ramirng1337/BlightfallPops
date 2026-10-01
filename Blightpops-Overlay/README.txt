@@ -67,28 +67,8 @@ Scythe and Blood Beast's small Blightfall icon show a red X if absent; hover
 over them for details. Window placement and choices save
 under your own %LOCALAPPDATA%\BlightfallPopsDesktop directory.
 
-This is a genuine WinForms executable compiled from C# source, independent
-from the older PowerShell version. The first build is a one-time command
-window; opening the resulting executable has no console window.
+This is a genuine WinForms executable compiled from C# source.
 
-FOR PUBLIC DOWNLOADS
-Upload the repository with its .github/workflows/build-windows.yml file to
-GitHub. In the Actions tab, "Build portable Windows overlay" can build a
-ready-to-run ZIP manually. For a patch, change the version in VersionInfo.cs,
-commit and push the changes, then push a matching version tag such as v1.0.0.5.
-The workflow rejects a tag that differs from the compiled EXE and publishes
-BlightfallPops.zip as a public GitHub Release asset. The running overlay checks
-the latest release on startup and from the cogwheel's "Check for updates"
-button. It asks before downloading and restarts after installing. Keep the
-asset name BlightfallPops.zip for later patches. People download that ZIP and run the EXE;
-they do not build the program. README-Portable.txt contains their instructions.
-
-The Erupt match still uses a time window and source GUID. Other abilities
-that trigger Erupt in the same interval may be included; do not interpret the
-totals as guaranteed to be caused by Blightfall. Blood is Life damage is
-attributed to the most recently summoned own Blood Beast, as in the overlay.
-This version uses a plain dark window; the portrait art is not yet ported.
-Please test on Windows and send any build errors or a screenshot of the UI.
 
 OVERKILL DISPLAY (v1.0.0.5)
 
