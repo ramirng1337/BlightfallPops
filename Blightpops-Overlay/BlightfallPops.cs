@@ -619,11 +619,20 @@ namespace BlightfallPopsDesktop {
             if(keyData==Keys.Escape&&resizeStart.HasValue){EndResizePreview(false);return true;}
             return base.ProcessCmdKey(ref message,keyData);
         }
+        private int DamageColumnX(Entry entry,int width,bool mini,int iconSize){
+            long firstValue=entry.Beast?entry.Corrupted:entry.Dread;
+            string firstText=mini?Format(firstValue):(entry.DOpen?"▾ ":"▸ ")+(entry.Beast?"CB":"DP")+" "+Format(firstValue);
+            int firstX=mini?55:81;
+            int minimum=firstX+iconSize+(mini?4:5)+TextRenderer.MeasureText(firstText,LabelFont(false)).Width+8;
+            // Tighten the gap in narrow cards while leaving measured room for the first number.
+            int desired=width/2-(mini?6:12);
+            return Math.Max(minimum,Math.Max(mini?150:168,desired));
+        }
         private int PreviewEventHeight(Entry entry,int width,bool mini){
             int top,minimum;
             if(mini){top=57;minimum=55;}
             else{
-                int iconSize=settings.IconSize,secondX=Math.Max(168,width/2);
+                int iconSize=settings.IconSize,secondX=DamageColumnX(entry,width,false,settings.IconSize);
                 int count=entry.Beast?(settings.ShowBeastBlightfall?1:0):((settings.ShowSoulReaper?1:0)+(settings.ShowScythe?1:0));
                 int statusX=width-12-count*iconSize-(count-1)*4;
                 string second=(entry.VOpen?"▾ ":"▸ ")+(entry.Beast?"BiL":"VP")+" "+Format(entry.Beast?entry.Life:entry.Virulent);
@@ -899,8 +908,7 @@ namespace BlightfallPopsDesktop {
             if(!entry.Beast)using(var font=new Font("Segoe UI",settings.TextSize))hitsWidth=TextRenderer.MeasureText(hits,font).Width;
             int totalLabelWidth=totalWidth+4;
             int totalX=statusRight-totalLabelWidth;
-            int secondX=Math.Max(165,Math.Min(Math.Max(168,card.Width/2)+iconSize+7,
-                Math.Min(statusX-iconSize-53,totalX-hitsWidth-3)));
+            int secondX=DamageColumnX(entry,card.Width,true,iconSize);
             int countX=secondX-3; // Label text has a small inset; its glyph matches the icon edge.
             var eventIcon=SpellIcon(entry.Beast?"BB":"BF",9,9,36);
             if(!string.IsNullOrEmpty(entry.Segment))toolTip.SetToolTip(eventIcon,entry.Segment);
@@ -990,7 +998,7 @@ namespace BlightfallPopsDesktop {
                 // The event art fills the left side of the header without adding a separate row.
                 card.Controls.Add(SpellIcon(entry.Beast?"BB":"BF",9,14,55));
                 const int contentLeft=76; // Shared starting edge, with space after the portrait.
-                int iconSize=settings.IconSize,firstX=contentLeft+5,secondX=Math.Max(168,card.Width/2);
+                int iconSize=settings.IconSize,firstX=contentLeft+5,secondX=DamageColumnX(entry,card.Width,false,settings.IconSize);
                 int statusCount=entry.Beast?(settings.ShowBeastBlightfall?1:0):((settings.ShowSoulReaper?1:0)+(settings.ShowScythe?1:0));
                 bool showExtra=statusCount>0;
                 int statusRight=card.Width-12;

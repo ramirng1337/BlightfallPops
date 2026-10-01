@@ -55,6 +55,20 @@ class UiPerformanceTests {
  Assert(cache.Count==0,"Session reset removes all cached cards");Assert(card.IsDisposed&&secondCard.IsDisposed,"Reset disposes historical cards");
  Assert(tracker.Entries.Count==0,"Session reset clears tracker");Assert(overlay.Size==size,"Reset preserves window size");
  }
+ // Wide first-column numbers retain their measured space in narrow cards.
+ tracker.Reset();var millions=MakeEntry(1);millions.Dread=10500000;millions.Virulent=10100000;tracker.Entries.Add(millions);
+ overlay.ClientSize=new System.Drawing.Size(385,390);settings.IconSize=23;settings.TextSize=14;
+ foreach(bool miniLayout in new[]{true,false}){
+ settings.MiniCards=miniLayout;Call(overlay,"RefreshCards",false);
+ var state=cache[millions];var panel=Card(cache,millions);var firstLabel=(Label)Field(state,"FirstLabel");var secondLabel=(Label)Field(state,"SecondLabel");
+ Assert(firstLabel.Width>=TextRenderer.MeasureText(firstLabel.Text,firstLabel.Font).Width,"10M first damage value has enough width");
+ int secondX=(int)overlay.GetType().GetMethod("DamageColumnX",Hidden).Invoke(overlay,new object[]{millions,panel.Width,miniLayout,miniLayout?23:settings.IconSize});
+ Assert(secondX==secondLabel.Left-(miniLayout?27:28),"Second icon follows responsive column");
+ bool aligned=false;foreach(Control child in panel.Controls){var label=child as Label;if(label!=null&&label.Text.EndsWith(" hits"))aligned=label.Left==secondX-3;}
+ Assert(aligned,"Hit count stays aligned above VP");
+ }
+ settings.IconSize=26;settings.TextSize=10;overlay.ClientSize=new System.Drawing.Size(500,390);
+ tracker.Reset();
  // Resizing changes geometry once at release, with only visible cards rebuilt.
  settings.MiniCards=false;settings.ShowBeasts=true;tracker.Reset();
  for(int i=1;i<=120;i++)tracker.Entries.Add(MakeEntry((i-1)%59+1));

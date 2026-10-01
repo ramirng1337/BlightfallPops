@@ -30,11 +30,6 @@ The gear also has "Check for updates". A quiet check on startup compares this
 EXE with the latest GitHub release. You choose whether to download and install
 an available patch; the overlay then restarts. No updater install is needed.
 
-This is a Windows desktop overlay that reads a local combat log. It is not a
-WoW addon and does not install into the game's AddOns folder. The EXE contains
-the spell art and character icon; no other files are needed to run it.
-
-
 OVERKILL DISPLAY (v1.0.0.5)
 
 Lethal Erupt hits remain part of the hit count and full logged damage total.

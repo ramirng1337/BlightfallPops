@@ -67,8 +67,6 @@ Scythe and Blood Beast's small Blightfall icon show a red X if absent; hover
 over them for details. Window placement and choices save
 under your own %LOCALAPPDATA%\BlightfallPopsDesktop directory.
 
-This is a genuine WinForms executable compiled from C# source.
-
 
 OVERKILL DISPLAY (v1.0.0.5)
 
