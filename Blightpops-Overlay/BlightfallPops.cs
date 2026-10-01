@@ -317,9 +317,7 @@ namespace BlightfallPopsDesktop {
         private readonly Label status=new Label();
         private readonly Timer poll=new Timer();
         private readonly ToolTip toolTip=new ToolTip();
-        private bool dirty,refreshingCards,scanningFullLog;
-        private long fullScanTarget;
-        private Button scanButton;
+        private bool dirty,refreshingCards;
         private Button lockButton,beastButton,collapseButton,miniButton,updateButton,logButton;
         private bool checkingUpdate,installingUpdate;
         private DateTime lastLogGrowthUtc=DateTime.MinValue;
@@ -381,12 +379,10 @@ namespace BlightfallPopsDesktop {
             lockButton=AddAction(actions,"","Lock movement and resizing",dim,delegate {settings.Locked=!settings.Locked;ApplyLock();Save();});
             lockButton.Paint+=PaintLockButton;
             DrawToolbarIcon(AddAction(actions,"","Choose combat log",dim,delegate {ChooseLog();}),"folder");
-            scanButton=AddAction(actions,"","Scan entire log — show all Blightfall and Blood Beast events",dim,delegate {ScanEntireLog();});
-            DrawToolbarIcon(scanButton,"scan");
             DrawToolbarIcon(AddAction(actions,"","New session",dim,delegate {ResetSession();}),"refresh");
             logButton=AddAction(actions,"","Pause overlay log reading",dim,delegate {
                 settings.WatchLog=!settings.WatchLog;
-                if(!settings.WatchLog){if(!scanningFullLog)tracker.Finish();status.Text="Overlay log reading paused";}
+                if(!settings.WatchLog){tracker.Finish();status.Text="Overlay log reading paused";}
                 else status.Text="Watching "+Path.GetFileName(settings.Log);
                 UpdateLogButton();Save();
             });
@@ -426,9 +422,7 @@ namespace BlightfallPopsDesktop {
             };Move+=delegate {if(Visible&&WindowState==FormWindowState.Normal)Save();};
             FormClosing+=delegate {EndResizePreview(false);Save();poll.Stop();toolTip.Dispose();if(artwork!=null)artwork.Dispose();foreach(var image in spellIcons.Values)image.Dispose();foreach(var font in labelFonts.Values)font.Dispose();};
             tracker.WindowMs=settings.WindowMs;tracker.Changed+=delegate {dirty=true;};
-            poll.Interval=350;poll.Tick+=delegate {if(resizeStart.HasValue)return;
-                if(scanningFullLog){ContinueFullLogScan();UpdateLogButton();return;}
-                try {if(settings.WatchLog&&settings.Log!=""){
+            poll.Interval=350;poll.Tick+=delegate {if(resizeStart.HasValue)return;try {if(settings.WatchLog&&settings.Log!=""){
                     long before=tracker.Position;
                     tracker.Tick(settings.Log);
                     if(tracker.Position>before)lastLogGrowthUtc=DateTime.UtcNow;
@@ -454,11 +448,6 @@ namespace BlightfallPopsDesktop {
                     if(kind=="folder"){
                         e.Graphics.DrawLines(pen,new[]{new Point(5,9),new Point(11,9),new Point(13,11),new Point(25,11),new Point(25,23),new Point(5,23),new Point(5,9)});
                         e.Graphics.DrawLine(pen,6,14,24,14);
-                    }else if(kind=="scan"){
-                        e.Graphics.DrawLines(pen,new[]{new Point(6,5),new Point(18,5),new Point(22,9),new Point(22,14)});
-                        e.Graphics.DrawLines(pen,new[]{new Point(6,5),new Point(6,25),new Point(13,25)});
-                        e.Graphics.DrawLine(pen,10,10,17,10);e.Graphics.DrawLine(pen,10,15,13,15);
-                        e.Graphics.DrawEllipse(pen,14,15,9,9);e.Graphics.DrawLine(pen,22,23,27,28);
                     }else if(kind=="refresh"){
                         e.Graphics.DrawArc(pen,7,6,17,17,35,285);
                         e.Graphics.DrawLines(pen,new[]{new Point(20,5),new Point(24,7),new Point(24,12)});
@@ -829,36 +818,7 @@ namespace BlightfallPopsDesktop {
         private void ChooseLog(){using(var dialog=new OpenFileDialog{Title="Select the active WoWCombatLog.txt",Filter="Combat logs (*.txt)|*.txt|All files (*.*)|*.*"}){
             if(File.Exists(settings.Log))dialog.FileName=settings.Log;
             if(dialog.ShowDialog(this)==DialogResult.OK){settings.Log=dialog.FileName;LoadLog(settings.Log);UpdateLogButton();Save();}}}
-        private void CancelFullLogScan(){
-            scanningFullLog=false;poll.Interval=350;if(scanButton!=null)scanButton.Enabled=true;
-        }
-        private void ScanEntireLog(){
-            if(scanningFullLog)return;
-            if(!File.Exists(settings.Log)){ChooseLog();if(!File.Exists(settings.Log))return;}
-            try{
-                fullScanTarget=new FileInfo(settings.Log).Length;
-                tracker.Reset();tracker.SkipFirstLine=false;scrollPixels=0;
-                settings.ShowBeasts=true;ApplyBeastButton();Save();
-                dirty=false;RefreshCards();scanningFullLog=true;scanButton.Enabled=false;poll.Interval=50;
-                status.Text="Scanning entire log — 0%";
-            }catch(Exception ex){CancelFullLogScan();status.Text="Cannot scan log: "+ex.Message;}
-        }
-        private void ContinueFullLogScan(){
-            if(!scanningFullLog)return;
-            try{
-                if(!File.Exists(settings.Log))throw new IOException("Selected log file is missing");
-                if(new FileInfo(settings.Log).Length<fullScanTarget)throw new IOException("Log was shortened during scan; scan it again");
-                tracker.Tick(settings.Log);
-                int percent=fullScanTarget==0?100:(int)Math.Min(100,tracker.Position*100.0/fullScanTarget);
-                status.Text="Scanning entire log — "+percent+"%";
-                if(tracker.Position<fullScanTarget)return;
-                tracker.Finish();CancelFullLogScan();dirty=false;RefreshCards();
-                ScrollTo(Math.Max(0,totalContentHeight-cards.ClientSize.Height));
-                status.Text="Full log scanned — "+tracker.Entries.Count+" events";
-                UpdateLogButton();
-            }catch(Exception ex){CancelFullLogScan();dirty=false;RefreshCards();status.Text="Scan error: "+ex.Message;}
-        }
-        private void LoadLog(string file){CancelFullLogScan();try{tracker.Reset();scrollPixels=0;var size=new FileInfo(file).Length;
+        private void LoadLog(string file){try{tracker.Reset();scrollPixels=0;var size=new FileInfo(file).Length;
             lastLogGrowthUtc=DateTime.MinValue;
             tracker.Position=settings.WatchLog?Math.Max(0,size-8388608L):size;
             tracker.SkipFirstLine=settings.WatchLog&&tracker.Position>0;
@@ -867,7 +827,7 @@ namespace BlightfallPopsDesktop {
             ScrollTo(Math.Max(0,totalContentHeight-cards.ClientSize.Height));
             status.Text=settings.WatchLog?"Watching "+Path.GetFileName(file):"Overlay log reading paused";UpdateLogButton();}
             catch(Exception ex){status.Text="Cannot open log: "+ex.Message;}}
-        private void ResetSession(){CancelFullLogScan();try{
+        private void ResetSession(){try{
             long end=0;bool partial=false;
             if(File.Exists(settings.Log))using(var stream=new FileStream(settings.Log,FileMode.Open,FileAccess.Read,FileShare.ReadWrite|FileShare.Delete)){
                 end=stream.Length;if(end>0){stream.Seek(end-1,SeekOrigin.Begin);partial=stream.ReadByte()!=10;}

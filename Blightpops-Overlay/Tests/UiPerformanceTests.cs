@@ -116,28 +116,6 @@ class UiPerformanceTests {
  vpEvent.Hits[1].Crit=true;vpEvent.Beast=true;Call(overlay,"RefreshCards",false);
  Assert(((Label)Field(cache[vpEvent],"SecondLabel")).ForeColor!=System.Drawing.Color.FromArgb(230,87,83),"Blood Beast damage is never highlighted by VP rule");
  }
- // Full scan includes history older than the 8 MiB tail and works with live reading paused.
- string scanFile=System.IO.Path.GetTempFileName();
- try{
- string own="Player-1-Test,Tester,0x511,0x0,Creature-1-Test,Enemy,0xa28,0x0,";
- string stamp="10/1/2026 12:00:00.0000  ";
- string cast=stamp+"SPELL_CAST_SUCCESS,"+own+"1271967,Spell,0x20\n";
- string damage=stamp+"SPELL_DAMAGE,"+own+"1241167,Spell,0x20,200,200,-1,32,0,0,0,1,nil,nil\n";
- string summon=stamp+"SPELL_SUMMON,"+own+"434237,Beast,0x20\n";
- string beastHit=stamp+"SPELL_DAMAGE,Creature-1-Test,Beast,0xa28,0x0,Creature-2-Test,Enemy,0xa28,0x0,434574,Spell,0x20,100,100,-1,32,0,0,0,nil,nil,nil\n";
- System.IO.File.WriteAllText(scanFile,cast+damage+summon+beastHit+stamp+"SWING_DAMAGE,Creature-1-Test,Beast,0xa28,0x0,Creature-2-Test,Enemy,0xa28,0x0,300,300,-1,1,0,0,0,1,nil,nil\n"+new string('x',9*1024*1024)+"\n"+cast+damage,new System.Text.UTF8Encoding(false));
- settings.Log=scanFile;settings.WatchLog=false;settings.ShowBeasts=false;Call(overlay,"ScanEntireLog");
- Assert((bool)Field(overlay,"scanningFullLog"),"Full scan starts while live reading is paused");
- int scanBatches=0;while((bool)Field(overlay,"scanningFullLog")&&scanBatches++<10000)Call(overlay,"ContinueFullLogScan");
- Assert(!(bool)Field(overlay,"scanningFullLog"),"Full scan completes");
- Assert(tracker.Entries.Count==3,"Entire file retains two casts and an early Blood Beast");
- Assert(settings.ShowBeasts&&!settings.WatchLog,"Scan shows beasts and retains pause state");
- Assert(tracker.Entries.Exists(e=>e.Beast&&e.Corrupted==100&&e.Melee==300&&e.Hits.Count==1),"Historical beast pop and melee are separate");
- Assert(tracker.Entries.FindAll(e=>!e.Beast&&e.Virulent==200).Count==2,"Blightfalls before and after long padding retained");
- Assert((int)Field(overlay,"scrollPixels")==Math.Max(0,(int)Field(overlay,"totalContentHeight")-((Control)Field(overlay,"cards")).ClientSize.Height),"Full scan scrolls to latest event");
- Call(overlay,"ScanEntireLog");Call(overlay,"ResetSession");Assert(!(bool)Field(overlay,"scanningFullLog"),"New session cancels history scan");
- Assert(tracker.Entries.Count==0&&tracker.Position==new System.IO.FileInfo(scanFile).Length,"New session clears scanned history and starts at EOF");
- }finally{settings.Log="";settings.WatchLog=true;System.IO.File.Delete(scanFile);}
  // Melee appears only in beast extra details, with a reusable hit dropdown.
  tracker.Reset();var meleeCard=MakeEntry(1);meleeCard.Beast=true;meleeCard.Melee=300;
  var meleeHit=new Hit{Kind="ME",Amount=300,Crit=true,Target="Enemy"};meleeCard.MeleeHits.Add(meleeHit);tracker.Entries.Add(meleeCard);
