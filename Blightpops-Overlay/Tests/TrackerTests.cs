@@ -26,6 +26,13 @@ class TrackerTests {
  t.Reset();Send(t,0,Prefix("SPELL_CAST_SUCCESS","1271967"));Send(t,1000,Damage("1241171",100,-1,false,advanced,shortTail));t.Finish();
  Assert(t.Entries[0].Overkill==0,"Nonlethal -1 becomes zero");Assert(t.Entries[0].Hits.Count==1,"Reset clears old cast");
  }
+ var pulls=new Tracker();var updatePull=typeof(Tracker).GetMethod("UpdatePull",BindingFlags.Instance|BindingFlags.NonPublic);
+ var pullTime=new DateTime(2026,10,1,12,0,0);updatePull.Invoke(pulls,new object[]{pullTime});
+ Assert(pulls.Segment=="Pull 1","Unnamed segment uses short Pull 1 label");
+ updatePull.Invoke(pulls,new object[]{pullTime.AddSeconds(5)});Assert(pulls.Segment=="Pull 1","Same pull retains its number");
+ updatePull.Invoke(pulls,new object[]{pullTime.AddSeconds(18)});Assert(pulls.Segment=="Pull 2","Next unnamed pull increments label");
+ Send(pulls,0,"ENCOUNTER_START,1,Test Boss,1,5");updatePull.Invoke(pulls,new object[]{pullTime.AddSeconds(40)});
+ Assert(pulls.Segment=="Test Boss — attempt 1","Named encounters retain logged names");
  var lethalBoss=new Tracker();
  Send(lethalBoss,0,"ENCOUNTER_START,1,Test Boss,1,5");
  Send(lethalBoss,5660,Prefix("SPELL_CAST_SUCCESS","1271967"));

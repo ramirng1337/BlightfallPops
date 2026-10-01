@@ -73,7 +73,7 @@ class UiPerformanceTests {
  settings.MiniCards=false;settings.ShowSoulReaper=true;settings.ShowScythe=true;
  foreach(int windowWidth in new[]{340,385,500})foreach(int textSize in new[]{10,14,18})foreach(int iconSize in new[]{18,40})foreach(bool beastLayout in new[]{false,true}){
  tracker.Reset();var sample=MakeEntry(1);sample.Beast=beastLayout;sample.Dread=10500000;sample.Virulent=10100000;
- sample.Corrupted=501100;sample.Life=496800;sample.Segment="Estimated trash pull 1";tracker.Entries.Add(sample);
+ sample.Corrupted=501100;sample.Life=496800;sample.Segment="Pull 1";tracker.Entries.Add(sample);
  settings.TextSize=textSize;settings.IconSize=iconSize;overlay.ClientSize=new System.Drawing.Size(windowWidth,600);
  Call(overlay,"RefreshCards",false);var state=cache[sample];var panel=Card(cache,sample);
  var left=(Label)Field(state,"FirstLabel");var right=(Label)Field(state,"SecondLabel");
@@ -84,7 +84,7 @@ class UiPerformanceTests {
  PictureBox firstDamage=null,secondDamage=null;
  foreach(Control child in panel.Controls){if((child.Tag as string)==(beastLayout?"CB":"DP"))firstDamage=child as PictureBox;if((child.Tag as string)==(beastLayout?"BiL":"VP"))secondDamage=child as PictureBox;}
  Assert(firstDamage.Left==secondDamage.Left&&secondDamage.Top>firstDamage.Top,"Extra detail spell icons share one column");
- bool encounter=false;foreach(Control child in panel.Controls)if(child.Text==sample.Segment){encounter=true;Assert(child.Bottom<firstDamage.Top,"Pull name sits above the event data");Assert(child.Font.Bold,"Pull name is bold");}
+ bool encounter=false;foreach(Control child in panel.Controls)if(child.Text==sample.Segment){encounter=true;Assert(child.Bottom<firstDamage.Top,"Pull name sits above the event data");Assert(child.Font.Bold,"Pull name is bold");Assert(((Label)child).TextAlign==System.Drawing.ContentAlignment.TopCenter,"Pull name is centered in shared heading column");Assert(child.Font.Size==settings.TextSize,"Pull name uses selected text size");}
  Assert(encounter,"Normal summary includes encounter text");
  string expectedTitle=beastLayout?"Beast #1":sample.Time.ToString("HH:mm:ss")+" #1";bool headerFound=false;
  foreach(Control child in panel.Controls)if(child.Text==expectedTitle){headerFound=true;Assert(child.Left==6,"Extra-detail header starts at the left edge");}
@@ -100,6 +100,19 @@ class UiPerformanceTests {
  Assert(found,"Normal card has complete hit count");}
  int predictedHeight=(int)overlay.GetType().GetMethod("PreviewEventHeight",Hidden).Invoke(overlay,new object[]{sample,panel.Width,false});
  Assert(predictedHeight==panel.Height,"Responsive resize preview matches actual card height");
+ }
+ // Different title lengths must not shift pull-name columns or change heading fonts.
+ tracker.Reset();var beastHeader=MakeEntry(1);beastHeader.Beast=true;beastHeader.Corrupted=501100;beastHeader.Life=496800;
+ var blightHeader=MakeEntry(2);blightHeader.Dread=239100;blightHeader.Virulent=782300;
+ tracker.Entries.Add(beastHeader);tracker.Entries.Add(blightHeader);settings.TextSize=10;settings.MiniCards=false;
+ foreach(int headerWidth in new[]{340,440}){
+ overlay.ClientSize=new System.Drawing.Size(headerWidth,600);Call(overlay,"RefreshCards",false);
+ Label beastPull=null,blightPull=null;
+ foreach(Control child in Card(cache,beastHeader).Controls)if(child.Text==beastHeader.Segment)beastPull=child as Label;
+ foreach(Control child in Card(cache,blightHeader).Controls)if(child.Text==blightHeader.Segment)blightPull=child as Label;
+ Assert(beastPull!=null&&blightPull!=null,"Both event types show pull names");
+ Assert(beastPull.Bounds==blightPull.Bounds,"Pull names share the same heading position and width");
+ Assert(beastPull.Font.Size==blightPull.Font.Size&&beastPull.Font.Size==settings.TextSize,"Headers never shrink per event");
  }
  settings.IconSize=26;settings.TextSize=10;overlay.ClientSize=new System.Drawing.Size(500,390);
  tracker.Reset();

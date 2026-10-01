@@ -133,7 +133,7 @@ namespace BlightfallPopsDesktop {
         }
         private void UpdatePull(DateTime time) {
             if(encounter!="")return;
-            if(lastOwnCombat==DateTime.MinValue || (time-lastOwnCombat).TotalSeconds>12)Segment="Estimated trash pull "+(++pullNumber);
+            if(lastOwnCombat==DateTime.MinValue || (time-lastOwnCombat).TotalSeconds>12)Segment="Pull "+(++pullNumber);
             lastOwnCombat=time;
         }
         // Detect the advanced unit block by its GUID, not by the row length.
@@ -260,7 +260,8 @@ namespace BlightfallPopsDesktop {
             return string.Join("|",new object[]{width,ShowMiniCards,settings.IconSize,settings.TextSize,
                 settings.CompactNumbers,settings.ShowBeastBlightfall,settings.ShowSoulReaper,settings.ShowScythe,settings.ShowOverkill,
                 e.Hits.Count,e.Dread,e.Virulent,e.Corrupted,e.Life,e.Scythe,e.SoulReaper,e.SoulReaperTargets,
-                e.Exploded,e.BlightfallBefore,e.Number,e.Time.Ticks,e.Segment});
+                e.Exploded,e.BlightfallBefore,e.Number,e.Time.Ticks,e.Segment,
+                ShowMiniCards?0:detailTitleWidth,ShowMiniCards?0:detailTotalWidth});
         }
         private void ConfigureDetails(Panel card,Entry entry,string first,int top,int minimum,Label firstLabel,Label secondLabel){
             var state=cardCache[entry];state.First=first;state.DetailsTop=top;state.MinimumHeight=minimum;
@@ -902,6 +903,20 @@ namespace BlightfallPopsDesktop {
             }
             return y;
         }
+        private int detailTitleWidth,detailTotalWidth;
+        private void UpdateDetailHeaderColumns(int width){
+            var font=SizedFont(settings.TextSize,true);
+            int titleWidth=0,totalWidth=0;
+            foreach(var entry in tracker.Entries){
+                if(entry.Beast&&!settings.ShowBeasts)continue;
+                string title=entry.Beast?"Beast #"+entry.Number:entry.Time.ToString("HH:mm:ss")+" #"+entry.Number;
+                string total=Format(entry.Beast?entry.Corrupted+entry.Life:entry.Dread+entry.Virulent);
+                titleWidth=Math.Max(titleWidth,TextRenderer.MeasureText(title,font).Width+4);
+                totalWidth=Math.Max(totalWidth,TextRenderer.MeasureText(total,font).Width+4);
+            }
+            detailTotalWidth=Math.Min(totalWidth,Math.Max(40,width-100));
+            detailTitleWidth=Math.Min(titleWidth,Math.Max(40,width-18-detailTotalWidth-60));
+        }
         private void RenderDetailedCard(Panel card,Entry entry){
             var g=LargeSummaryLayout(entry,card.Width);
             int rowHeight=(g.BaseHeight-g.DamageTop-12)/2;
@@ -911,18 +926,15 @@ namespace BlightfallPopsDesktop {
             toolTip.SetToolTip(eventIcon,entry.Segment??"");card.Controls.Add(eventIcon);
             string title=entry.Beast?"Beast #"+entry.Number:entry.Time.ToString("HH:mm:ss")+" #"+entry.Number;
             string total=Format(entry.Beast?entry.Corrupted+entry.Life:entry.Dread+entry.Virulent);
-            int headingSize=settings.TextSize;
-            while(headingSize>8&&TextRenderer.MeasureText(title,SizedFont(headingSize,true)).Width+
-                TextRenderer.MeasureText(total,SizedFont(headingSize,true)).Width+150>card.Width)headingSize--;
-            var headingFont=SizedFont(headingSize,true);
-            int titleWidth=TextRenderer.MeasureText(title,headingFont).Width+4;
-            int totalWidth=TextRenderer.MeasureText(total,headingFont).Width+4;
-            var titleLabel=Label(title,Color.White,6,3,titleWidth,true);titleLabel.Font=headingFont;
+            // Every event uses the same heading font and column boundaries.
+            var headingFont=SizedFont(settings.TextSize,true);
+            var titleLabel=Label(title,Color.White,6,3,detailTitleWidth,true);titleLabel.Font=headingFont;
             card.Controls.Add(titleLabel);toolTip.SetToolTip(titleLabel,title);
-            var totalLabel=Label(total,green,card.Width-9-totalWidth,3,totalWidth,true);totalLabel.Font=headingFont;
-            totalLabel.TextAlign=ContentAlignment.TopRight;card.Controls.Add(totalLabel);
+            var totalLabel=Label(total,green,card.Width-9-detailTotalWidth,3,detailTotalWidth,true);totalLabel.Font=headingFont;
+            totalLabel.TextAlign=ContentAlignment.TopRight;toolTip.SetToolTip(totalLabel,total);card.Controls.Add(totalLabel);
             var segment=Label(entry.Segment??"",dim,titleLabel.Right+8,3,Math.Max(20,totalLabel.Left-titleLabel.Right-16),true);
-            segment.Font=headingFont;segment.Height=titleLabel.Height=totalLabel.Height=TextRenderer.MeasureText("Ag",headingFont).Height+2;
+            segment.Font=headingFont;segment.TextAlign=ContentAlignment.TopCenter;
+            segment.Height=titleLabel.Height=totalLabel.Height=TextRenderer.MeasureText("Ag",headingFont).Height+2;
             toolTip.SetToolTip(segment,entry.Segment??"");card.Controls.Add(segment);
             string first=entry.Beast?"CB":"DP",second=entry.Beast?"BiL":"VP";
             long firstValue=entry.Beast?entry.Corrupted:entry.Dread,secondValue=entry.Beast?entry.Life:entry.Virulent;
@@ -1039,6 +1051,7 @@ namespace BlightfallPopsDesktop {
                 int byTime=a.Time.CompareTo(b.Time);
                 return byTime!=0?byTime:a.Sequence.CompareTo(b.Sequence);
             });
+            if(!ShowMiniCards)UpdateDetailHeaderColumns(Math.Max(260,cards.ClientSize.Width-7));
             foreach(var entry in ordered){if(entry.Beast&&!settings.ShowBeasts)continue;
                 int width=Math.Max(260,cards.ClientSize.Width-7);
                 string signature=CardSignature(entry,width);CardState state;
