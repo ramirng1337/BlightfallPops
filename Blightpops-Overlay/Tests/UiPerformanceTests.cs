@@ -67,6 +67,25 @@ class UiPerformanceTests {
  bool aligned=false;foreach(Control child in panel.Controls){var label=child as Label;if(label!=null&&label.Text.EndsWith(" hits"))aligned=label.Left==secondX-3;}
  Assert(aligned,"Hit count stays aligned above VP");
  }
+ // Narrow normal cards must keep both amounts and the complete count readable.
+ settings.MiniCards=false;settings.ShowSoulReaper=true;settings.ShowScythe=true;
+ foreach(int windowWidth in new[]{340,385,500})foreach(int textSize in new[]{10,14,18})foreach(int iconSize in new[]{18,40})foreach(bool beastLayout in new[]{false,true}){
+ tracker.Reset();var sample=MakeEntry(1);sample.Beast=beastLayout;sample.Dread=10500000;sample.Virulent=10100000;
+ sample.Corrupted=501100;sample.Life=496800;sample.Segment="Estimated trash pull 1";tracker.Entries.Add(sample);
+ settings.TextSize=textSize;settings.IconSize=iconSize;overlay.ClientSize=new System.Drawing.Size(windowWidth,600);
+ Call(overlay,"RefreshCards",false);var state=cache[sample];var panel=Card(cache,sample);
+ var left=(Label)Field(state,"FirstLabel");var right=(Label)Field(state,"SecondLabel");
+ Assert(left.Width>=TextRenderer.MeasureText(left.Text,left.Font).Width,"Narrow normal first damage fits");
+ Assert(right.Width>=TextRenderer.MeasureText(right.Text,right.Font).Width,"Narrow normal second damage fits");
+ Assert(!left.Bounds.IntersectsWith(right.Bounds),"Damage labels never overlap");
+ Assert(left.Right<=panel.Width-8&&right.Right<=panel.Width-8,"Damage stays inside normal card");
+ if(!beastLayout){bool found=false;foreach(Control child in panel.Controls){var label=child as Label;
+ if(label!=null&&label.Text.EndsWith(" hits")){found=true;Assert(label.Width>=TextRenderer.MeasureText(label.Text,label.Font).Width,"Hit count never ellipsizes");
+ Assert(label.Left==right.Left-iconSize-8,"Hit counter follows VP column");}}
+ Assert(found,"Normal card has complete hit count");}
+ int predictedHeight=(int)overlay.GetType().GetMethod("PreviewEventHeight",Hidden).Invoke(overlay,new object[]{sample,panel.Width,false});
+ Assert(predictedHeight==panel.Height,"Responsive resize preview matches actual card height");
+ }
  settings.IconSize=26;settings.TextSize=10;overlay.ClientSize=new System.Drawing.Size(500,390);
  tracker.Reset();
  // Resizing changes geometry once at release, with only visible cards rebuilt.

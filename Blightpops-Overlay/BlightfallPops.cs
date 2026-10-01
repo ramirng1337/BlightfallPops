@@ -619,27 +619,62 @@ namespace BlightfallPopsDesktop {
             if(keyData==Keys.Escape&&resizeStart.HasValue){EndResizePreview(false);return true;}
             return base.ProcessCmdKey(ref message,keyData);
         }
+        private string DamageText(Entry entry,bool first,bool shortLabel){
+            string kind=entry.Beast?(first?"CB":"BiL"):(first?"DP":"VP");
+            long value=entry.Beast?(first?entry.Corrupted:entry.Life):(first?entry.Dread:entry.Virulent);
+            return ((first?entry.DOpen:entry.VOpen)?"▾ ":"▸ ")+(shortLabel?"":kind+" ")+Format(value);
+        }
+        private bool ShortDamageLabels(Entry entry,int width){
+            int both=TextRenderer.MeasureText(DamageText(entry,true,false),LabelFont(false)).Width+
+                TextRenderer.MeasureText(DamageText(entry,false,false),LabelFont(false)).Width;
+            return width<81+2*settings.IconSize+both+26;
+        }
         private int DamageColumnX(Entry entry,int width,bool mini,int iconSize){
             long firstValue=entry.Beast?entry.Corrupted:entry.Dread;
-            string firstText=mini?Format(firstValue):(entry.DOpen?"▾ ":"▸ ")+(entry.Beast?"CB":"DP")+" "+Format(firstValue);
+            string firstText=mini?Format(firstValue):DamageText(entry,true,ShortDamageLabels(entry,width));
             int firstX=mini?55:81;
             int minimum=firstX+iconSize+(mini?4:5)+TextRenderer.MeasureText(firstText,LabelFont(false)).Width+8;
-            // Tighten the gap in narrow cards while leaving measured room for the first number.
             int desired=width/2-(mini?6:12);
             return Math.Max(minimum,Math.Max(mini?150:168,desired));
+        }
+        private sealed class NormalLayout {
+            public int SecondX,SecondY,StatusX,StatusY,CountX,CountY,TitleEnd,SegmentWidth,RowHeight,DetailsTop,SegmentTop,DamageTop,TextHeight;
+            public bool ShortLabels,Stacked,StatusOnRow;
+        }
+        private NormalLayout NormalCardLayout(Entry entry,int width){
+            var g=new NormalLayout();int icon=settings.IconSize;
+            g.ShortLabels=ShortDamageLabels(entry,width);
+            g.RowHeight=Math.Max(icon,TextRenderer.MeasureText("Ag",LabelFont(false)).Height+4);
+            g.TextHeight=Math.Max(25,TextRenderer.MeasureText("Ag",LabelFont(false)).Height+2);
+            g.SegmentTop=Math.Max(27,3+TextRenderer.MeasureText("Ag",LabelFont(true)).Height+4);
+            g.DamageTop=Math.Max(58,g.SegmentTop+g.TextHeight+4);
+            int secondWidth=TextRenderer.MeasureText(DamageText(entry,false,g.ShortLabels),LabelFont(false)).Width;
+            g.SecondX=DamageColumnX(entry,width,false,icon);
+            g.Stacked=g.SecondX+icon+5+secondWidth>width-8;
+            if(g.Stacked)g.SecondX=81;
+            g.SecondY=g.DamageTop+(g.Stacked?g.RowHeight+g.TextHeight+11:0);
+            int count=entry.Beast?(settings.ShowBeastBlightfall?1:0):((settings.ShowSoulReaper?1:0)+(settings.ShowScythe?1:0));
+            g.StatusX=width-12-count*icon-(count-1)*4;
+            g.StatusOnRow=count>0&&g.StatusX-(g.SecondX+icon+5)-5>=secondWidth;
+            g.StatusY=g.SecondY+(count>0&&!g.StatusOnRow?g.RowHeight+5:0);
+            string total=Format(entry.Beast?entry.Corrupted+entry.Life:entry.Dread+entry.Virulent);
+            int totalX=width-12-TextRenderer.MeasureText(total,LabelFont(true)).Width-4;
+            string head=entry.Beast?(width<380||settings.TextSize>14?"Beast #":"Blood Beast #")+entry.Number:
+                "#"+entry.Number+"  "+entry.Time.ToString("HH:mm:ss");
+            string hits=entry.Hits.Count+(entry.Hits.Count==1?" hit":" hits");
+            int hitsWidth=TextRenderer.MeasureText(hits,LabelFont(false)).Width+3;
+            g.CountX=g.SecondX-3;
+            bool headerFits=g.CountX+hitsWidth+7<=totalX&&76+TextRenderer.MeasureText(head,LabelFont(true)).Width+6<=g.CountX;
+            g.CountY=g.Stacked?g.SecondY-g.TextHeight-5:headerFits?5:g.SegmentTop;
+            g.TitleEnd=!entry.Beast&&g.CountY==5?g.CountX:totalX;
+            g.SegmentWidth=!entry.Beast&&g.CountY==g.SegmentTop?Math.Max(25,g.CountX-76-8):width-76-11;
+            g.DetailsTop=Math.Max(g.SecondY,g.StatusY)+g.RowHeight+5;
+            return g;
         }
         private int PreviewEventHeight(Entry entry,int width,bool mini){
             int top,minimum;
             if(mini){top=57;minimum=55;}
-            else{
-                int iconSize=settings.IconSize,secondX=DamageColumnX(entry,width,false,settings.IconSize);
-                int count=entry.Beast?(settings.ShowBeastBlightfall?1:0):((settings.ShowSoulReaper?1:0)+(settings.ShowScythe?1:0));
-                int statusX=width-12-count*iconSize-(count-1)*4;
-                string second=(entry.VOpen?"▾ ":"▸ ")+(entry.Beast?"BiL":"VP")+" "+Format(entry.Beast?entry.Life:entry.Virulent);
-                int textWidth=TextRenderer.MeasureText(second,LabelFont(false)).Width;
-                bool extraRow=count>0&&statusX-(secondX+iconSize+5)-5<textWidth;
-                top=58+(extraRow?iconSize+5:0)+iconSize+5;minimum=90;
-            }
+            else{top=NormalCardLayout(entry,width).DetailsTop;minimum=90;}
             string first=entry.Beast?"CB":"DP";
             foreach(var hit in entry.Hits){
                 if(!(hit.Kind==first?entry.DOpen:entry.VOpen))continue;
@@ -998,7 +1033,8 @@ namespace BlightfallPopsDesktop {
                 // The event art fills the left side of the header without adding a separate row.
                 card.Controls.Add(SpellIcon(entry.Beast?"BB":"BF",9,14,55));
                 const int contentLeft=76; // Shared starting edge, with space after the portrait.
-                int iconSize=settings.IconSize,firstX=contentLeft+5,secondX=DamageColumnX(entry,card.Width,false,settings.IconSize);
+                var geometry=NormalCardLayout(entry,card.Width);
+                int iconSize=settings.IconSize,firstX=contentLeft+5,secondX=geometry.SecondX;
                 int statusCount=entry.Beast?(settings.ShowBeastBlightfall?1:0):((settings.ShowSoulReaper?1:0)+(settings.ShowScythe?1:0));
                 bool showExtra=statusCount>0;
                 int statusRight=card.Width-12;
@@ -1012,39 +1048,42 @@ namespace BlightfallPopsDesktop {
                     countWidth=TextRenderer.MeasureText(countText,countFont).Width;
                 int totalLabelWidth=totalWidth+4;
                 int totalX=statusRight-totalLabelWidth;
-                int countX=secondX-3; // Align the hit count above the VP icon.
-                int titleEnd=entry.Beast?totalX:countX;
-                card.Controls.Add(Label(head,Color.White,contentLeft,3,Math.Max(30,titleEnd-contentLeft-6),true));
+                int countX=geometry.CountX; // Keep the full hit count aligned with VP.
+                int titleEnd=geometry.TitleEnd;
+                var headingLabel=Label(head,Color.White,contentLeft,3,Math.Max(30,titleEnd-contentLeft-6),true);
+                headingLabel.Height=TextRenderer.MeasureText("Ag",LabelFont(true)).Height+2;
+                toolTip.SetToolTip(headingLabel,head);card.Controls.Add(headingLabel);
                 var totalLabel=Label(totalText,green,totalX,3,totalLabelWidth,true);
-                totalLabel.TextAlign=ContentAlignment.TopRight;
+                totalLabel.TextAlign=ContentAlignment.TopRight;totalLabel.Height=headingLabel.Height;
                 card.Controls.Add(totalLabel);
                 if(!entry.Beast){
-                    var countLabel=Label(countText,dim,countX,5,Math.Max(20,Math.Min(countWidth+3,totalX-countX-7)));
+                    var countLabel=Label(countText,dim,countX,geometry.CountY,countWidth+3);countLabel.Height=geometry.TextHeight;
                     toolTip.SetToolTip(countLabel,countText);card.Controls.Add(countLabel);
                 }
-                card.Controls.Add(Label(entry.Segment??"",dim,contentLeft,27,card.Width-contentLeft-11));
+                string segment=entry.Segment??"";
+                if(geometry.CountY==geometry.SegmentTop&&segment.StartsWith("Estimated trash pull "))segment="Trash pull "+segment.Substring(21);
+                var segmentLabel=Label(segment,dim,contentLeft,geometry.SegmentTop,geometry.SegmentWidth);segmentLabel.Height=geometry.TextHeight;
+                toolTip.SetToolTip(segmentLabel,entry.Segment??"");card.Controls.Add(segmentLabel);
                 var first=entry.Beast?"CB":"DP";var second=entry.Beast?"BiL":"VP";
                 var firstValue=entry.Beast?entry.Corrupted:entry.Dread;var secondValue=entry.Beast?entry.Life:entry.Virulent;
-                int detailTop=58;
-                int secondY=detailTop;
-                string secondText=(entry.VOpen?"▾ ":"▸ ")+second+" "+Format(secondValue);
+                int detailTop=geometry.DamageTop;
+                int secondY=geometry.SecondY;
+                string secondText=DamageText(entry,false,geometry.ShortLabels);
                 int secondLabelX=secondX+iconSize+5;
-                int secondTextWidth;
-                using(var detailFont=new Font("Segoe UI",settings.TextSize))
-                    secondTextWidth=TextRenderer.MeasureText(secondText,detailFont).Width;
                 // Keep the status markers beside the damage values when there is room.
-                bool statusOnDamageRow=showExtra&&statusX-secondLabelX-5>=secondTextWidth;
-                int statusY=detailTop+(showExtra&&!statusOnDamageRow?iconSize+5:0);
+                bool statusOnDamageRow=geometry.StatusOnRow;
+                int statusY=geometry.StatusY;
                 var firstIcon=SpellIcon(first,firstX,detailTop,iconSize);
                 var secondIcon=SpellIcon(second,secondX,secondY,iconSize);
                 card.Controls.Add(firstIcon);card.Controls.Add(secondIcon);
-                var firstLabel=Label((entry.DOpen?"▾ ":"▸ ")+first+" "+Format(firstValue),
+                var firstLabel=Label(DamageText(entry,true,geometry.ShortLabels),
                     !entry.Beast&&entry.Hits.Exists(h=>h.Kind=="DP"&&h.Crit)?Color.Gold:dim,firstX+iconSize+5,detailTop+2,
-                    Math.Max(18,secondX-firstX-iconSize-10));
+                    Math.Max(18,geometry.Stacked?card.Width-firstX-iconSize-13:secondX-firstX-iconSize-10));
                 var secondLabel=Label(secondText,dim,secondLabelX,secondY+2,
                     Math.Max(44,(statusOnDamageRow?statusX-5:card.Width-8)-secondLabelX));
+                firstLabel.Height=secondLabel.Height=geometry.RowHeight;
                 firstLabel.Cursor=secondLabel.Cursor=Cursors.Hand;card.Controls.Add(firstLabel);card.Controls.Add(secondLabel);
-                toolTip.SetToolTip(firstLabel,firstLabel.Text);toolTip.SetToolTip(secondLabel,secondLabel.Text);
+                toolTip.SetToolTip(firstLabel,first+" "+Format(firstValue)+" — click for hits");toolTip.SetToolTip(secondLabel,second+" "+Format(secondValue)+" — click for hits");
                 EventHandler toggleFirst=delegate {ToggleDetails(entry,true);};
                 EventHandler toggleSecond=delegate {ToggleDetails(entry,false);};
                 firstLabel.Click+=toggleFirst;firstIcon.Cursor=Cursors.Hand;firstIcon.Click+=toggleFirst;
@@ -1057,7 +1096,7 @@ namespace BlightfallPopsDesktop {
                         card.Controls.Add(SpellIcon("SR",statusX,statusY,iconSize,SoulReaperTip(entry),entry.SoulReaper));
                     if(entry.Beast||settings.ShowScythe)card.Controls.Add(SpellIcon(entry.Beast?"BF":"SC",statusX+(statusCount-1)*(iconSize+4),statusY,iconSize,tip,active));
                 }
-                int detailY=Math.Max(secondY,statusY)+iconSize+5;
+                int detailY=geometry.DetailsTop;
                 ConfigureDetails(card,entry,first,detailY,90,firstLabel,secondLabel);
                 foreach(Control child in card.Controls)if(!(child is Panel&&state.Rows.ContainsValue((Panel)child)))HookWheel(child);
                 card.ResumeLayout();y+=card.Height+5;
