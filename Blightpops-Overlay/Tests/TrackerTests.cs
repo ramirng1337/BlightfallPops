@@ -26,6 +26,18 @@ class TrackerTests {
  t.Reset();Send(t,0,Prefix("SPELL_CAST_SUCCESS","1271967"));Send(t,1000,Damage("1241171",100,-1,false,advanced,shortTail));t.Finish();
  Assert(t.Entries[0].Overkill==0,"Nonlethal -1 becomes zero");Assert(t.Entries[0].Hits.Count==1,"Reset clears old cast");
  }
+ // Beast melee is per summon and excluded from CB/BiL pop totals.
+ foreach(bool advancedSwing in new[]{false,true})foreach(bool offhand in new[]{false,true}){
+ var melee=new Tracker();Send(melee,0,Prefix("SPELL_SUMMON","434237"));
+ string swing="SWING_DAMAGE,Creature-1-Test,Beast,0xa28,0x0,Creature-2-Test,Enemy,0xa28,0x0";
+ if(advancedSwing)swing+=",Creature-1-Test,0000000000000000,0,100000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,80";
+ swing+=",500,500,100,1,0,0,0,1,nil,nil"+(offhand?",1":"");
+ Send(melee,10,swing);Send(melee,10,swing.Replace("SWING_DAMAGE,","SWING_DAMAGE_LANDED,"));
+ Send(melee,20,swing.Replace("Creature-1-Test,Beast","Creature-Other,Beast"));
+ var beast=melee.Entries[0];Assert(beast.Melee==500&&beast.MeleeHits.Count==1,"Owned beast swing counted once");
+ Assert(beast.MeleeHits[0].Crit&&beast.MeleeHits[0].Overkill==100,"Swing crit and overkill parsed");
+ Assert(beast.Corrupted==0&&beast.Life==0&&beast.Hits.Count==0,"Melee does not inflate pop summary");
+ }
  var pulls=new Tracker();var updatePull=typeof(Tracker).GetMethod("UpdatePull",BindingFlags.Instance|BindingFlags.NonPublic);
  var pullTime=new DateTime(2026,10,1,12,0,0);updatePull.Invoke(pulls,new object[]{pullTime});
  Assert(pulls.Segment=="Pull 1","Unnamed segment uses short Pull 1 label");

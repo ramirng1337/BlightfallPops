@@ -13,17 +13,18 @@ using System.Windows.Forms;
 namespace BlightfallPopsDesktop {
     internal sealed class Hit { public string Kind, Target; public long Amount, Overkill; public bool Crit; }
     internal sealed class Entry {
-        public bool Beast, DOpen, VOpen, Exploded, BlightfallBefore;
+        public bool Beast, DOpen, VOpen, MOpen, Exploded, BlightfallBefore;
         public bool? Scythe, SoulReaper;
         public int SoulReaperTargets;
         public int Number;
         public long Sequence;
         public DateTime Time;
         public string Segment, Guid;
-        public long Dread, Virulent, Corrupted, Life;
+        public long Dread, Virulent, Corrupted, Life, Melee;
         // Damage totals already include overkill. Keep this as a separate breakdown.
         public long Overkill {get{long total=0;foreach(var hit in Hits)total+=hit.Overkill;return total;}}
         public readonly List<Hit> Hits = new List<Hit>();
+        public readonly List<Hit> MeleeHits = new List<Hit>();
     }
     internal sealed class Settings {
         public int Width=500, Height=390, X=int.MinValue, Y=int.MinValue, WindowMs=1200, IconSize=26, TextSize=10;
@@ -168,6 +169,15 @@ namespace BlightfallPopsDesktop {
                 var beast=new Entry {Beast=true,Number=++beastNumber,Sequence=++nextSequence,Time=time,Segment=Segment,Guid=dest};
                 beasts[dest]=beast;recentBeast=beast;Entries.Add(beast);Notify();return;
             }
+            if(kind=="SWING_DAMAGE"){
+                Entry beast;
+                if(beasts.TryGetValue(source,out beast)&&time>=beast.Time){
+                    // Swings omit the three spell fields; normalize the prefix for the shared suffix reader.
+                    f.InsertRange(9,new[]{"0","Melee","0x1"});
+                    long amount=Amount(f);beast.Melee+=amount;
+                    beast.MeleeHits.Add(new Hit{Kind="ME",Amount=amount,Overkill=Overkill(f),Target=F(f,6),Crit=Crit(f)});Notify();return;
+                }
+            }
             if(kind=="SPELL_DAMAGE"&&(spell=="434574"||spell=="434246")) {
                 Entry beast=null;
                 if(spell=="434574")beasts.TryGetValue(source,out beast);
@@ -256,10 +266,20 @@ namespace BlightfallPopsDesktop {
             if(!labelFonts.TryGetValue(key,out font)){font=new Font("Segoe UI",size,bold?FontStyle.Bold:FontStyle.Regular);labelFonts.Add(key,font);}
             return font;
         }
+        private Color VirulentDamageColor(Entry entry){
+            if(entry.Beast)return dim;
+            int hits=0;
+            foreach(var hit in entry.Hits){
+                if(hit.Kind!="VP")continue;
+                if(!hit.Crit)return dim;
+                hits++;
+            }
+            return hits>3?red:dim;
+        }
         private string CardSignature(Entry e,int width){
             return string.Join("|",new object[]{width,ShowMiniCards,settings.IconSize,settings.TextSize,
                 settings.CompactNumbers,settings.ShowBeastBlightfall,settings.ShowSoulReaper,settings.ShowScythe,settings.ShowOverkill,
-                e.Hits.Count,e.Dread,e.Virulent,e.Corrupted,e.Life,e.Scythe,e.SoulReaper,e.SoulReaperTargets,
+                e.Hits.Count,ShowMiniCards?0:e.MeleeHits.Count,ShowMiniCards?0:e.Melee,VirulentDamageColor(e).ToArgb(),e.Dread,e.Virulent,e.Corrupted,e.Life,e.Scythe,e.SoulReaper,e.SoulReaperTargets,
                 e.Exploded,e.BlightfallBefore,e.Number,e.Time.Ticks,e.Segment,
                 ShowMiniCards?0:detailTitleWidth,ShowMiniCards?0:detailTotalWidth});
         }
@@ -277,6 +297,15 @@ namespace BlightfallPopsDesktop {
             int previous=scrollPixels;cards.SuspendLayout();state.Card.SuspendLayout();
             LayoutDetails(state);state.Card.ResumeLayout();PositionCards();cards.ResumeLayout();ScrollTo(previous);
         }
+        private void ToggleMeleeDetails(Entry entry){
+            CardState state;if(!cardCache.TryGetValue(entry,out state)||ShowMiniCards)return;
+            entry.MOpen=!entry.MOpen;int previous=scrollPixels;cards.SuspendLayout();state.Card.SuspendLayout();
+            LayoutDetails(state);state.Card.ResumeLayout();PositionCards();cards.ResumeLayout();ScrollTo(previous);
+        }
+        private static IEnumerable<Hit> DisplayHits(Entry entry){
+            foreach(var hit in entry.Hits)yield return hit;
+            foreach(var hit in entry.MeleeHits)yield return hit;
+        }
         private void PositionCards(){
             int y=3;foreach(var state in visibleCards){state.Card.Tag=y;state.Card.Top=y-scrollPixels;y+=state.Card.Height+(ShowMiniCards?4:5);}
             totalContentHeight=y;
@@ -288,7 +317,9 @@ namespace BlightfallPopsDesktop {
         private readonly Label status=new Label();
         private readonly Timer poll=new Timer();
         private readonly ToolTip toolTip=new ToolTip();
-        private bool dirty,refreshingCards;
+        private bool dirty,refreshingCards,scanningFullLog;
+        private long fullScanTarget;
+        private Button scanButton;
         private Button lockButton,beastButton,collapseButton,miniButton,updateButton,logButton;
         private bool checkingUpdate,installingUpdate;
         private DateTime lastLogGrowthUtc=DateTime.MinValue;
@@ -350,10 +381,12 @@ namespace BlightfallPopsDesktop {
             lockButton=AddAction(actions,"","Lock movement and resizing",dim,delegate {settings.Locked=!settings.Locked;ApplyLock();Save();});
             lockButton.Paint+=PaintLockButton;
             DrawToolbarIcon(AddAction(actions,"","Choose combat log",dim,delegate {ChooseLog();}),"folder");
+            scanButton=AddAction(actions,"","Scan entire log — show all Blightfall and Blood Beast events",dim,delegate {ScanEntireLog();});
+            DrawToolbarIcon(scanButton,"scan");
             DrawToolbarIcon(AddAction(actions,"","New session",dim,delegate {ResetSession();}),"refresh");
             logButton=AddAction(actions,"","Pause overlay log reading",dim,delegate {
                 settings.WatchLog=!settings.WatchLog;
-                if(!settings.WatchLog){tracker.Finish();status.Text="Overlay log reading paused";}
+                if(!settings.WatchLog){if(!scanningFullLog)tracker.Finish();status.Text="Overlay log reading paused";}
                 else status.Text="Watching "+Path.GetFileName(settings.Log);
                 UpdateLogButton();Save();
             });
@@ -393,7 +426,9 @@ namespace BlightfallPopsDesktop {
             };Move+=delegate {if(Visible&&WindowState==FormWindowState.Normal)Save();};
             FormClosing+=delegate {EndResizePreview(false);Save();poll.Stop();toolTip.Dispose();if(artwork!=null)artwork.Dispose();foreach(var image in spellIcons.Values)image.Dispose();foreach(var font in labelFonts.Values)font.Dispose();};
             tracker.WindowMs=settings.WindowMs;tracker.Changed+=delegate {dirty=true;};
-            poll.Interval=350;poll.Tick+=delegate {if(resizeStart.HasValue)return;try {if(settings.WatchLog&&settings.Log!=""){
+            poll.Interval=350;poll.Tick+=delegate {if(resizeStart.HasValue)return;
+                if(scanningFullLog){ContinueFullLogScan();UpdateLogButton();return;}
+                try {if(settings.WatchLog&&settings.Log!=""){
                     long before=tracker.Position;
                     tracker.Tick(settings.Log);
                     if(tracker.Position>before)lastLogGrowthUtc=DateTime.UtcNow;
@@ -419,6 +454,11 @@ namespace BlightfallPopsDesktop {
                     if(kind=="folder"){
                         e.Graphics.DrawLines(pen,new[]{new Point(5,9),new Point(11,9),new Point(13,11),new Point(25,11),new Point(25,23),new Point(5,23),new Point(5,9)});
                         e.Graphics.DrawLine(pen,6,14,24,14);
+                    }else if(kind=="scan"){
+                        e.Graphics.DrawLines(pen,new[]{new Point(6,5),new Point(18,5),new Point(22,9),new Point(22,14)});
+                        e.Graphics.DrawLines(pen,new[]{new Point(6,5),new Point(6,25),new Point(13,25)});
+                        e.Graphics.DrawLine(pen,10,10,17,10);e.Graphics.DrawLine(pen,10,15,13,15);
+                        e.Graphics.DrawEllipse(pen,14,15,9,9);e.Graphics.DrawLine(pen,22,23,27,28);
                     }else if(kind=="refresh"){
                         e.Graphics.DrawArc(pen,7,6,17,17,35,285);
                         e.Graphics.DrawLines(pen,new[]{new Point(20,5),new Point(24,7),new Point(24,12)});
@@ -634,8 +674,10 @@ namespace BlightfallPopsDesktop {
                 var f=SizedFont(g.TextSize,false);
                 int first=TextRenderer.MeasureText(Format(entry.Beast?entry.Corrupted:entry.Dread),f).Width;
                 int second=TextRenderer.MeasureText(Format(entry.Beast?entry.Life:entry.Virulent),f).Width;
+                if(entry.Beast)second=Math.Max(second,TextRenderer.MeasureText(Format(entry.Melee),f).Width);
                 g.SecondX=55+g.IconSize+4+Math.Max(first,second)+12;
                 int countWidth=Math.Max(TextRenderer.MeasureText(hits,f).Width,TextRenderer.MeasureText(critText,SizedFont(g.TextSize,true)).Width)+4;
+                if(entry.Beast)countWidth=Math.Max(countWidth,TextRenderer.MeasureText(entry.MeleeHits.Count+" melee hits",f).Width+4);
                 int right=width-9-status*g.IconSize-Math.Max(0,status-1)*3;
                 if(g.SecondX+countWidth+6<=right)break;
                 if(g.TextSize>8){g.TextSize--;continue;}
@@ -645,7 +687,7 @@ namespace BlightfallPopsDesktop {
             g.EncounterTop=3;
             g.DamageTop=TextRenderer.MeasureText("Ag",LabelFont(true)).Height+8;
             int rowHeight=Math.Max(g.IconSize,TextRenderer.MeasureText("Ag",SizedFont(g.TextSize,true)).Height+2);
-            g.BaseHeight=g.DamageTop+2*rowHeight+12;
+            g.BaseHeight=g.DamageTop+(entry.Beast?3:2)*(rowHeight+6);
             return g;
         }
         private int PreviewEventHeight(Entry entry,int width,bool mini){
@@ -653,8 +695,8 @@ namespace BlightfallPopsDesktop {
             if(mini){top=57;minimum=55;}
             else{var geometry=LargeSummaryLayout(entry,width);top=geometry.BaseHeight+2;minimum=geometry.BaseHeight;}
             string first=entry.Beast?"CB":"DP";
-            foreach(var hit in entry.Hits){
-                if(!(hit.Kind==first?entry.DOpen:entry.VOpen))continue;
+            foreach(var hit in DisplayHits(entry)){
+                if(!(hit.Kind=="ME"?entry.MOpen&&!mini:hit.Kind==first?entry.DOpen:entry.VOpen))continue;
                 int size=Math.Min(32,Math.Max(23,settings.IconSize)),amountX=19+size;
                 int rowWidth=width-16,height=size+6;
                 int amountWidth=TextRenderer.MeasureText(Format(hit.Amount),LabelFont(false)).Width+6;
@@ -787,7 +829,36 @@ namespace BlightfallPopsDesktop {
         private void ChooseLog(){using(var dialog=new OpenFileDialog{Title="Select the active WoWCombatLog.txt",Filter="Combat logs (*.txt)|*.txt|All files (*.*)|*.*"}){
             if(File.Exists(settings.Log))dialog.FileName=settings.Log;
             if(dialog.ShowDialog(this)==DialogResult.OK){settings.Log=dialog.FileName;LoadLog(settings.Log);UpdateLogButton();Save();}}}
-        private void LoadLog(string file){try{tracker.Reset();scrollPixels=0;var size=new FileInfo(file).Length;
+        private void CancelFullLogScan(){
+            scanningFullLog=false;poll.Interval=350;if(scanButton!=null)scanButton.Enabled=true;
+        }
+        private void ScanEntireLog(){
+            if(scanningFullLog)return;
+            if(!File.Exists(settings.Log)){ChooseLog();if(!File.Exists(settings.Log))return;}
+            try{
+                fullScanTarget=new FileInfo(settings.Log).Length;
+                tracker.Reset();tracker.SkipFirstLine=false;scrollPixels=0;
+                settings.ShowBeasts=true;ApplyBeastButton();Save();
+                dirty=false;RefreshCards();scanningFullLog=true;scanButton.Enabled=false;poll.Interval=50;
+                status.Text="Scanning entire log — 0%";
+            }catch(Exception ex){CancelFullLogScan();status.Text="Cannot scan log: "+ex.Message;}
+        }
+        private void ContinueFullLogScan(){
+            if(!scanningFullLog)return;
+            try{
+                if(!File.Exists(settings.Log))throw new IOException("Selected log file is missing");
+                if(new FileInfo(settings.Log).Length<fullScanTarget)throw new IOException("Log was shortened during scan; scan it again");
+                tracker.Tick(settings.Log);
+                int percent=fullScanTarget==0?100:(int)Math.Min(100,tracker.Position*100.0/fullScanTarget);
+                status.Text="Scanning entire log — "+percent+"%";
+                if(tracker.Position<fullScanTarget)return;
+                tracker.Finish();CancelFullLogScan();dirty=false;RefreshCards();
+                ScrollTo(Math.Max(0,totalContentHeight-cards.ClientSize.Height));
+                status.Text="Full log scanned — "+tracker.Entries.Count+" events";
+                UpdateLogButton();
+            }catch(Exception ex){CancelFullLogScan();dirty=false;RefreshCards();status.Text="Scan error: "+ex.Message;}
+        }
+        private void LoadLog(string file){CancelFullLogScan();try{tracker.Reset();scrollPixels=0;var size=new FileInfo(file).Length;
             lastLogGrowthUtc=DateTime.MinValue;
             tracker.Position=settings.WatchLog?Math.Max(0,size-8388608L):size;
             tracker.SkipFirstLine=settings.WatchLog&&tracker.Position>0;
@@ -796,7 +867,7 @@ namespace BlightfallPopsDesktop {
             ScrollTo(Math.Max(0,totalContentHeight-cards.ClientSize.Height));
             status.Text=settings.WatchLog?"Watching "+Path.GetFileName(file):"Overlay log reading paused";UpdateLogButton();}
             catch(Exception ex){status.Text="Cannot open log: "+ex.Message;}}
-        private void ResetSession(){try{
+        private void ResetSession(){CancelFullLogScan();try{
             long end=0;bool partial=false;
             if(File.Exists(settings.Log))using(var stream=new FileStream(settings.Log,FileMode.Open,FileAccess.Read,FileShare.ReadWrite|FileShare.Delete)){
                 end=stream.Length;if(end>0){stream.Seek(end-1,SeekOrigin.Begin);partial=stream.ReadByte()!=10;}
@@ -843,6 +914,14 @@ namespace BlightfallPopsDesktop {
         private PictureBox SpellIcon(string key,int x,int y,int size,string tip=null,bool? active=null){
             Image img;spellIcons.TryGetValue(key,out img);
             var box=new PictureBox{Tag=key,Left=x,Top=y,Width=size,Height=size,Image=img,SizeMode=PictureBoxSizeMode.Zoom,BackColor=Color.FromArgb(21,23,27)};
+            if(key=="ME")box.Paint+=delegate(object sender,PaintEventArgs e){
+                using(var pen=new Pen(dim,Math.Max(2,size/10))){
+                    e.Graphics.DrawLine(pen,size/4,size/4,size*3/4,size*3/4);
+                    e.Graphics.DrawLine(pen,size*3/4,size/4,size/4,size*3/4);
+                    e.Graphics.DrawLine(pen,size/6,size*2/3,size/3,size*5/6);
+                    e.Graphics.DrawLine(pen,size*2/3,size*5/6,size*5/6,size*2/3);
+                }
+            };
             if(tip!=null){box.Paint+=delegate(object sender,PaintEventArgs e){
                 if(active.HasValue&&!active.Value){using(var pen=new Pen(red,Math.Max(2,size/9))){e.Graphics.DrawLine(pen,2,2,size-3,size-3);e.Graphics.DrawLine(pen,size-3,2,2,size-3);}}
                 if(!active.HasValue)using(var font=new Font("Segoe UI",Math.Max(11,size/2),FontStyle.Bold))
@@ -854,8 +933,8 @@ namespace BlightfallPopsDesktop {
         private int AddHitRows(Panel card,Entry entry,string first,int y){
             var state=cardCache[entry];
             foreach(var row in state.Rows.Values)row.Visible=false;
-            foreach(var hit in entry.Hits){
-                if(!(hit.Kind==first?entry.DOpen:entry.VOpen))continue;
+            foreach(var hit in DisplayHits(entry)){
+                if(!(hit.Kind=="ME"?entry.MOpen&&!ShowMiniCards:hit.Kind==first?entry.DOpen:entry.VOpen))continue;
                 Panel cached;
                 if(state.Rows.TryGetValue(hit,out cached)){cached.Top=y;cached.Visible=true;y+=cached.Height+2;continue;}
                 int hitSize=Math.Min(32,Math.Max(23,settings.IconSize));
@@ -919,7 +998,7 @@ namespace BlightfallPopsDesktop {
         }
         private void RenderDetailedCard(Panel card,Entry entry){
             var g=LargeSummaryLayout(entry,card.Width);
-            int rowHeight=(g.BaseHeight-g.DamageTop-12)/2;
+            int rowHeight=Math.Max(g.IconSize,TextRenderer.MeasureText("Ag",SizedFont(g.TextSize,true)).Height+2);
             int secondTop=g.DamageTop+rowHeight+6;
             card.Controls.Add(new Panel{Left=0,Top=0,Width=3,Height=g.BaseHeight,BackColor=entry.Beast?red:green});
             var eventIcon=SpellIcon(entry.Beast?"BB":"BF",6,g.DamageTop+(secondTop+rowHeight-g.DamageTop-42)/2,42);
@@ -942,7 +1021,7 @@ namespace BlightfallPopsDesktop {
             var secondIcon=SpellIcon(second,55,secondTop,g.IconSize);
             int amountX=55+g.IconSize+4,amountWidth=g.SecondX-amountX-8;
             var firstLabel=Label(Format(firstValue),!entry.Beast&&entry.Hits.Exists(h=>h.Kind=="DP"&&h.Crit)?Color.Gold:dim,amountX,g.DamageTop-1,amountWidth);
-            var secondLabel=Label(Format(secondValue),dim,amountX,secondTop-1,amountWidth);
+            var secondLabel=Label(Format(secondValue),VirulentDamageColor(entry),amountX,secondTop-1,amountWidth);
             firstLabel.Font=secondLabel.Font=SizedFont(g.TextSize,false);firstLabel.Height=secondLabel.Height=rowHeight;
             card.Controls.Add(firstIcon);card.Controls.Add(secondIcon);card.Controls.Add(firstLabel);card.Controls.Add(secondLabel);
             firstIcon.Cursor=secondIcon.Cursor=firstLabel.Cursor=secondLabel.Cursor=Cursors.Hand;
@@ -966,6 +1045,20 @@ namespace BlightfallPopsDesktop {
             }else if(!entry.Beast&&settings.ShowScythe){
                 string tip="Festering Scythe: "+(entry.Scythe.HasValue?(entry.Scythe.Value?"active":"inactive"):"unknown");
                 card.Controls.Add(SpellIcon("SC",statusX+(statusCount-1)*(g.IconSize+3),secondTop,g.IconSize,tip,entry.Scythe));
+            }
+            if(entry.Beast){
+                int meleeTop=secondTop+rowHeight+6;
+                var meleeIcon=SpellIcon("ME",55,meleeTop,g.IconSize);
+                var meleeLabel=Label(Format(entry.Melee),dim,amountX,meleeTop-1,amountWidth);
+                meleeLabel.Font=SizedFont(g.TextSize,false);meleeLabel.Height=rowHeight;
+                string meleeCount=entry.MeleeHits.Count+" melee "+(entry.MeleeHits.Count==1?"hit":"hits");
+                var meleeCountLabel=Label(meleeCount,dim,g.SecondX,meleeTop-1,card.Width-g.SecondX-9);
+                meleeCountLabel.Font=SizedFont(g.TextSize,false);meleeCountLabel.Height=rowHeight;
+                card.Controls.Add(meleeIcon);card.Controls.Add(meleeLabel);card.Controls.Add(meleeCountLabel);
+                meleeIcon.Cursor=meleeLabel.Cursor=Cursors.Hand;
+                EventHandler click=delegate{ToggleMeleeDetails(entry);};meleeIcon.Click+=click;meleeLabel.Click+=click;
+                toolTip.SetToolTip(meleeIcon,"Blood Beast melee — click for hits; excluded from pop total");
+                toolTip.SetToolTip(meleeLabel,"Melee: "+entry.Melee.ToString("N0")+" — excluded from CB + BiL total");
             }
             ConfigureDetails(card,entry,first,g.BaseHeight+2,g.BaseHeight,firstLabel,secondLabel);
         }
@@ -1011,7 +1104,7 @@ namespace BlightfallPopsDesktop {
             var secondIcon=SpellIcon(second,secondX,damageTop,iconSize);
             var firstLabel=Label(Format(firstValue),!entry.Beast&&entry.Hits.Exists(h=>h.Kind=="DP"&&h.Crit)?Color.Gold:dim,
                 firstX+iconSize+4,damageTop-1,Math.Max(16,secondX-firstX-iconSize-8));
-            var secondLabel=Label(Format(secondValue),dim,secondX+iconSize+4,damageTop-1,
+            var secondLabel=Label(Format(secondValue),VirulentDamageColor(entry),secondX+iconSize+4,damageTop-1,
                 Math.Max(16,(showExtra?statusX:card.Width-7)-secondX-iconSize-8));
             card.Controls.Add(firstIcon);card.Controls.Add(secondIcon);card.Controls.Add(firstLabel);card.Controls.Add(secondLabel);
             string firstTip=first+" "+Format(firstValue)+" — click for hits";

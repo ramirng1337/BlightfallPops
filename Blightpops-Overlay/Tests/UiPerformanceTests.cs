@@ -101,6 +101,54 @@ class UiPerformanceTests {
  int predictedHeight=(int)overlay.GetType().GetMethod("PreviewEventHeight",Hidden).Invoke(overlay,new object[]{sample,panel.Width,false});
  Assert(predictedHeight==panel.Height,"Responsive resize preview matches actual card height");
  }
+ // VP highlights require at least four VP hits, all critical; other damage types do not count.
+ foreach(bool miniVp in new[]{true,false}){
+ settings.MiniCards=miniVp;settings.TextSize=10;settings.IconSize=26;overlay.ClientSize=new System.Drawing.Size(500,600);
+ tracker.Reset();var vpEvent=MakeEntry(1);vpEvent.Hits.Clear();
+ vpEvent.Hits.Add(new Hit{Kind="DP",Amount=100,Crit=false,Target="Enemy"});
+ for(int i=0;i<3;i++)vpEvent.Hits.Add(new Hit{Kind="VP",Amount=100,Crit=true,Target="Enemy"});
+ tracker.Entries.Add(vpEvent);Call(overlay,"RefreshCards",false);
+ Assert(((Label)Field(cache[vpEvent],"SecondLabel")).ForeColor!=System.Drawing.Color.FromArgb(230,87,83),"Three critical VP hits do not highlight");
+ vpEvent.Hits.Add(new Hit{Kind="VP",Amount=100,Crit=true,Target="Enemy"});Call(overlay,"RefreshCards",false);
+ Assert(((Label)Field(cache[vpEvent],"SecondLabel")).ForeColor==System.Drawing.Color.FromArgb(230,87,83),"Four all-critical VP hits highlight despite noncrit DP");
+ vpEvent.Hits[1].Crit=false;Call(overlay,"RefreshCards",false);
+ Assert(((Label)Field(cache[vpEvent],"SecondLabel")).ForeColor!=System.Drawing.Color.FromArgb(230,87,83),"One normal VP hit removes red highlight");
+ vpEvent.Hits[1].Crit=true;vpEvent.Beast=true;Call(overlay,"RefreshCards",false);
+ Assert(((Label)Field(cache[vpEvent],"SecondLabel")).ForeColor!=System.Drawing.Color.FromArgb(230,87,83),"Blood Beast damage is never highlighted by VP rule");
+ }
+ // Full scan includes history older than the 8 MiB tail and works with live reading paused.
+ string scanFile=System.IO.Path.GetTempFileName();
+ try{
+ string own="Player-1-Test,Tester,0x511,0x0,Creature-1-Test,Enemy,0xa28,0x0,";
+ string stamp="10/1/2026 12:00:00.0000  ";
+ string cast=stamp+"SPELL_CAST_SUCCESS,"+own+"1271967,Spell,0x20\n";
+ string damage=stamp+"SPELL_DAMAGE,"+own+"1241167,Spell,0x20,200,200,-1,32,0,0,0,1,nil,nil\n";
+ string summon=stamp+"SPELL_SUMMON,"+own+"434237,Beast,0x20\n";
+ string beastHit=stamp+"SPELL_DAMAGE,Creature-1-Test,Beast,0xa28,0x0,Creature-2-Test,Enemy,0xa28,0x0,434574,Spell,0x20,100,100,-1,32,0,0,0,nil,nil,nil\n";
+ System.IO.File.WriteAllText(scanFile,cast+damage+summon+beastHit+stamp+"SWING_DAMAGE,Creature-1-Test,Beast,0xa28,0x0,Creature-2-Test,Enemy,0xa28,0x0,300,300,-1,1,0,0,0,1,nil,nil\n"+new string('x',9*1024*1024)+"\n"+cast+damage,new System.Text.UTF8Encoding(false));
+ settings.Log=scanFile;settings.WatchLog=false;settings.ShowBeasts=false;Call(overlay,"ScanEntireLog");
+ Assert((bool)Field(overlay,"scanningFullLog"),"Full scan starts while live reading is paused");
+ int scanBatches=0;while((bool)Field(overlay,"scanningFullLog")&&scanBatches++<10000)Call(overlay,"ContinueFullLogScan");
+ Assert(!(bool)Field(overlay,"scanningFullLog"),"Full scan completes");
+ Assert(tracker.Entries.Count==3,"Entire file retains two casts and an early Blood Beast");
+ Assert(settings.ShowBeasts&&!settings.WatchLog,"Scan shows beasts and retains pause state");
+ Assert(tracker.Entries.Exists(e=>e.Beast&&e.Corrupted==100&&e.Melee==300&&e.Hits.Count==1),"Historical beast pop and melee are separate");
+ Assert(tracker.Entries.FindAll(e=>!e.Beast&&e.Virulent==200).Count==2,"Blightfalls before and after long padding retained");
+ Assert((int)Field(overlay,"scrollPixels")==Math.Max(0,(int)Field(overlay,"totalContentHeight")-((Control)Field(overlay,"cards")).ClientSize.Height),"Full scan scrolls to latest event");
+ Call(overlay,"ScanEntireLog");Call(overlay,"ResetSession");Assert(!(bool)Field(overlay,"scanningFullLog"),"New session cancels history scan");
+ Assert(tracker.Entries.Count==0&&tracker.Position==new System.IO.FileInfo(scanFile).Length,"New session clears scanned history and starts at EOF");
+ }finally{settings.Log="";settings.WatchLog=true;System.IO.File.Delete(scanFile);}
+ // Melee appears only in beast extra details, with a reusable hit dropdown.
+ tracker.Reset();var meleeCard=MakeEntry(1);meleeCard.Beast=true;meleeCard.Melee=300;
+ var meleeHit=new Hit{Kind="ME",Amount=300,Crit=true,Target="Enemy"};meleeCard.MeleeHits.Add(meleeHit);tracker.Entries.Add(meleeCard);
+ settings.MiniCards=false;Call(overlay,"RefreshCards",false);var beastPanel=Card(cache,meleeCard);int closedMeleeHeight=beastPanel.Height;
+ bool hasMeleeIcon=false;foreach(Control child in beastPanel.Controls)if((child.Tag as string)=="ME")hasMeleeIcon=true;
+ Assert(hasMeleeIcon,"Extra-detail beast has melee row");Call(overlay,"ToggleMeleeDetails",meleeCard);
+ var meleeRows=(IDictionary)Field(cache[meleeCard],"Rows");Assert(meleeRows.Contains(meleeHit)&&((Control)meleeRows[meleeHit]).Visible,"Melee dropdown shows target hit");
+ Assert(beastPanel.Height==(int)overlay.GetType().GetMethod("PreviewEventHeight",Hidden).Invoke(overlay,new object[]{meleeCard,beastPanel.Width,false}),"Preview includes melee dropdown");
+ var cachedMeleeRow=meleeRows[meleeHit];Call(overlay,"ToggleMeleeDetails",meleeCard);Assert(beastPanel.Height==closedMeleeHeight,"Closing melee dropdown restores card height");
+ Call(overlay,"ToggleMeleeDetails",meleeCard);Assert(Object.ReferenceEquals(cachedMeleeRow,meleeRows[meleeHit]),"Melee dropdown reuses hit row");
+ settings.MiniCards=true;Call(overlay,"RefreshCards",false);foreach(Control child in Card(cache,meleeCard).Controls)Assert((child.Tag as string)!="ME","Compact view excludes melee row");
  // Different title lengths must not shift pull-name columns or change heading fonts.
  tracker.Reset();var beastHeader=MakeEntry(1);beastHeader.Beast=true;beastHeader.Corrupted=501100;beastHeader.Life=496800;
  var blightHeader=MakeEntry(2);blightHeader.Dread=239100;blightHeader.Virulent=782300;
