@@ -30,6 +30,15 @@ The gear also has "Check for updates". A quiet check on startup compares this
 EXE with the latest GitHub release. You choose whether to download and install
 an available patch; the overlay then restarts. No updater install is needed.
 
+This is a Windows desktop overlay that reads a local combat log. It is not a
+WoW addon and does not install into the game's AddOns folder. The EXE contains
+the spell art and character icon; no other files are needed to run it.
+
+Source code and more detailed usage notes are in the public project repository.
+For each new release, update VersionInfo.cs to match the GitHub tag (for example,
+1.0.0.5 for v1.0.0.5), run Build Once.cmd, and attach a BlightfallPops.zip that
+contains the newly built BlightfallPops.exe. This keeps update checks accurate.
+
 OVERKILL DISPLAY (v1.0.0.5)
 
 Lethal Erupt hits remain part of the hit count and full logged damage total.
@@ -62,3 +71,7 @@ Blood Beast, Soul Reaper, Festering Scythe. Click each to enable or disable
 its events/marker. A red stop mark means disabled; a green line means enabled.
 Blood Beast is now in this menu instead of the toolbar. Soul Reaper and
 Festering Scythe marker settings are independent and saved between launches.
+
+Transparent background: click the checkered-square toolbar icon to hide empty space behind
+event cards. Collapse the toolbar for an events-only view. Transparent gaps
+pass clicks through; use the small top strip to reopen the toolbar.

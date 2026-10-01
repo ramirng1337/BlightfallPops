@@ -205,6 +205,51 @@ class UiPerformanceTests {
  Assert(overlay.Controls.GetChildIndex(grip)<overlay.Controls.GetChildIndex(optionsPanel),"Resize handle stays above open options");
  overlay.Width+=10;Assert(overlay.Controls.GetChildIndex(grip)<overlay.Controls.GetChildIndex(optionsPanel),"Resize handle stays above options after resizing");
  Call(overlay,"ToggleOptions");
+ // Large history must keep native positions bounded and reuse visible controls.
+ settings.MiniCards=true;settings.GroupByEventType=false;tracker.Reset();
+ overlay.ClientSize=new System.Drawing.Size(500,390);
+ for(int i=0;i<1200;i++){
+ var history=MakeEntry(1);history.Number=i+1;history.Sequence=i;history.Time=new DateTime(2026,10,1).AddSeconds(i);
+ tracker.Entries.Add(history);
+ }
+ Call(overlay,"RefreshCards",false);
+ int content=(int)Field(overlay,"totalContentHeight");
+ Assert(content>65535,"History exceeds native signed child-coordinate range");
+ var eventViewport=(Control)Field(overlay,"cards");
+ var active=(IEnumerable)Field(overlay,"presentedCards");
+ foreach(int position in new[]{content-eventViewport.Height,content/2,0,content-eventViewport.Height}){
+ Call(overlay,"ScrollTo",position);int activeCount=0;
+ var shown=new System.Collections.Generic.HashSet<Control>();
+ foreach(object state in active){
+ var panel=(Control)Field(state,"Card");activeCount++;shown.Add(panel);
+ Assert(panel.Top==(int)panel.Tag-(int)Field(overlay,"scrollPixels"),"Visible card has correct viewport position");
+ Assert(panel.Top>=-panel.Height-80&&panel.Top<=eventViewport.Height+80,"Visible native coordinates remain near viewport");
+ Assert(panel.Controls.Count>0,"Entering viewport renders deferred controls");
+ }
+ Assert(activeCount>0&&activeCount<30,"Only a bounded viewport working set is presented");
+ foreach(Control panel in eventViewport.Controls)Assert(Math.Abs(panel.Top)<2000,"Distant native controls never receive history offsets");
+ }
+ var latestPanel=Card(cache,tracker.Entries[1199]);
+ var transparencyAction=(Button)Field(overlay,"transparencyButton");
+ Assert(transparencyAction.Parent!=menu,"Transparency control lives in toolbar");
+ foreach(Control option in menu.Controls)Assert(option.Text!="Transparent background","Transparency removed from Settings menu");
+ overlay.ClientSize=new System.Drawing.Size(340,390);
+ var toolbar=transparencyAction.Parent;int toolbarWidth=toolbar.Padding.Horizontal;
+ foreach(Control action in toolbar.Controls)toolbarWidth+=action.Width+action.Margin.Horizontal;
+ Assert(toolbarWidth<=toolbar.ClientSize.Width,"All toolbar buttons fit at minimum width");
+ overlay.ClientSize=new System.Drawing.Size(500,390);
+ Call(overlay,"ScrollTo",(int)Field(overlay,"totalContentHeight"));
+ var latestHeader=latestPanel.Controls[0];
+ var solidBackground=eventViewport.BackColor;var eventBackground=latestPanel.BackColor;
+ settings.TransparentBackground=true;Call(overlay,"ApplyBackground");
+ Assert(overlay.TransparencyKey==System.Drawing.Color.Magenta&&eventViewport.BackColor==overlay.TransparencyKey,"Transparent mode keys out empty viewport background");
+ Assert(latestPanel.BackColor==eventBackground&&latestPanel.BackColor!=overlay.TransparencyKey,"Event cards remain opaque and readable");
+ Assert(Object.ReferenceEquals(latestHeader,latestPanel.Controls[0]),"Transparency toggle does not rebuild events");
+ settings.TransparentBackground=false;Call(overlay,"ApplyBackground");
+ Assert(overlay.TransparencyKey==System.Drawing.Color.Empty&&eventViewport.BackColor==solidBackground,"Disabling transparency restores dark background");
+
+ Call(overlay,"ScrollTo",(int)Field(overlay,"scrollPixels")-10);
+ Assert(Object.ReferenceEquals(latestHeader,latestPanel.Controls[0]),"Small scroll reuses rendered controls");
  Call(overlay,"ResetSession");Assert(cache.Count==0,"Reset clears deferred and rendered cards");
  }
  Console.WriteLine("Passed "+checks+" UI performance checks");
