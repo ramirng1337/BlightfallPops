@@ -1,5 +1,5 @@
 using System.Reflection;
 
 // Match this version to the GitHub release tag each time you publish a new EXE.
-// For example, 1.0.0.23 corresponds to the tag v1.0.0.23.
-[assembly: AssemblyVersion("1.0.0.23")]
+// For example, 1.0.0.25 corresponds to the tag v1.0.0.25.
+[assembly: AssemblyVersion("1.0.0.25")]

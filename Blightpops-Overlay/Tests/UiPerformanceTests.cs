@@ -13,6 +13,7 @@ class UiPerformanceTests {
  static Entry MakeEntry(int n){var e=new Entry{Number=n,Sequence=n,Time=new DateTime(2026,9,30,12,0,n),Segment="Test",Dread=100,Virulent=200};
  e.Hits.Add(new Hit{Kind="DP",Amount=100,Overkill=30,Crit=true,Target="A long enemy name that wraps at smaller window widths"});
  e.Hits.Add(new Hit{Kind="VP",Amount=200,Target="Enemy"});return e;}
+ static bool LocallyVisible(Control c){return (bool)typeof(Control).GetMethod("GetState",BindingFlags.NonPublic|BindingFlags.Instance).Invoke(c,new object[]{2});}
  static Control Card(IDictionary cache,Entry e){return (Control)Field(cache[e],"Card");}
  [STAThread] static void Main(){
  Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
@@ -73,6 +74,44 @@ class UiPerformanceTests {
  Assert(!settings.Collapsed,"Restore strip can expand toolbar while locked");
  Assert(restoreBar.BackColor==System.Drawing.Color.FromArgb(10,11,13),"Expanded toolbar stays dark");
  settings.Locked=false;settings.TransparentBackground=false;Call(overlay,"ApplyLock");Call(overlay,"ApplyBackground");
+ // Transparent scrollbar hover is independent of toolbar collapse and lock.
+ var hoverTrack=(Control)Field(overlay,"scrollTrack");
+ foreach(bool collapsed in new[]{false,true})foreach(bool locked in new[]{false,true}){
+ settings.Collapsed=collapsed;settings.Locked=locked;settings.TransparentBackground=true;
+ Call(overlay,"ApplyCollapsed");Call(overlay,"ApplyLock");Call(overlay,"ApplyBackground");
+ Set(overlay,"totalContentHeight",eventArea.Height+500);var beforeHover=eventArea.Bounds;
+ Call(overlay,"UpdateScrollbarVisibility",false);Assert(!LocallyVisible(hoverTrack),"Transparent scrollbar hides outside window");
+ Call(overlay,"UpdateScrollbarVisibility",true);Assert(LocallyVisible(hoverTrack),"Transparent scrollbar appears on hover, including locked/collapsed");
+ Set(overlay,"scrollDragging",true);Call(overlay,"UpdateScrollbarVisibility",false);
+ Assert(LocallyVisible(hoverTrack),"Captured scrollbar stays visible outside window during drag");
+ Set(overlay,"scrollDragging",false);Call(overlay,"UpdateScrollbarVisibility",false);
+ Assert(!LocallyVisible(hoverTrack),"Scrollbar hides again after drag ends outside");
+ Assert(eventArea.Bounds==beforeHover,"Scrollbar hover does not shift events");
+ settings.TransparentBackground=false;Call(overlay,"UpdateScrollbarVisibility",false);
+ Assert(LocallyVisible(hoverTrack),"Solid mode keeps overflow scrollbar visible");
+ Set(overlay,"totalContentHeight",0);Call(overlay,"UpdateScrollbarVisibility",true);
+ Assert(!LocallyVisible(hoverTrack),"No scrollbar when events fit");
+ }
+ settings.Collapsed=false;settings.Locked=false;settings.TransparentBackground=false;
+ Call(overlay,"ApplyCollapsed");Call(overlay,"ApplyLock");Call(overlay,"ApplyBackground");
+ // Resize grip follows transparency hover without changing its geometry.
+ var hoverGrip=(Control)Field(overlay,"grip");var gripBounds=hoverGrip.Bounds;
+ foreach(bool collapsed in new[]{false,true})foreach(bool transparent in new[]{false,true}){
+ settings.Collapsed=collapsed;settings.TransparentBackground=transparent;settings.Locked=false;
+ Call(overlay,"ApplyCollapsed");Call(overlay,"ApplyBackground");
+ Call(overlay,"UpdateResizeGripVisibility",false);
+ Assert(LocallyVisible(hoverGrip)==!transparent,"Resize corner hides outside only in transparent mode");
+ Call(overlay,"UpdateResizeGripVisibility",true);
+ Assert(LocallyVisible(hoverGrip),"Unlocked resize corner appears on hover in either toolbar state");
+ Set(overlay,"resizeStart",new System.Drawing.Point(0,0));Call(overlay,"UpdateResizeGripVisibility",false);
+ Assert(LocallyVisible(hoverGrip),"Active resize keeps corner visible outside window");
+ settings.Locked=true;Call(overlay,"UpdateResizeGripVisibility",true);
+ Assert(!LocallyVisible(hoverGrip),"Lock hides resize corner even during hover");
+ Set(overlay,"resizeStart",null);
+ Assert(hoverGrip.Bounds==gripBounds,"Hover preserves resize corner geometry");
+ }
+ settings.Collapsed=false;settings.TransparentBackground=false;settings.Locked=false;
+ Call(overlay,"ApplyCollapsed");Call(overlay,"ApplyLock");Call(overlay,"ApplyBackground");
  // Wide first-column numbers retain their measured space in narrow cards.
  tracker.Reset();var millions=MakeEntry(1);millions.Dread=10500000;millions.Virulent=10100000;tracker.Entries.Add(millions);
  overlay.ClientSize=new System.Drawing.Size(385,390);settings.IconSize=23;settings.TextSize=14;
