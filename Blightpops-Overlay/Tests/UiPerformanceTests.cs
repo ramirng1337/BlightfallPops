@@ -17,7 +17,7 @@ class UiPerformanceTests {
  [STAThread] static void Main(){
  Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
  using(var overlay=new Overlay(false)){
- var settings=(Settings)Field(overlay,"settings");settings.Log="";settings.ShowBeasts=true;settings.TextSize=10;settings.IconSize=26;
+ var settings=(Settings)Field(overlay,"settings");settings.Log="";settings.SideBySide=false;settings.ShowBeasts=true;settings.TextSize=10;settings.IconSize=26;
  settings.ShowOverkill=true;settings.GroupByEventType=false;overlay.ClientSize=new System.Drawing.Size(500,390);
  var menu=(Control)Field(overlay,"options");Button bb=null,sr=null,sc=null;
  foreach(Control c in menu.Controls){if((c.Tag as string)=="BB")bb=c as Button;if((c.Tag as string)=="SR")sr=c as Button;if((c.Tag as string)=="SC")sc=c as Button;}
@@ -143,7 +143,17 @@ class UiPerformanceTests {
  var meleeHit=new Hit{Kind="ME",Amount=300,Crit=true,Target="Enemy"};meleeCard.MeleeHits.Add(meleeHit);tracker.Entries.Add(meleeCard);
  settings.MiniCards=false;Call(overlay,"RefreshCards",false);var beastPanel=Card(cache,meleeCard);int closedMeleeHeight=beastPanel.Height;
  bool hasMeleeIcon=false;foreach(Control child in beastPanel.Controls)if((child.Tag as string)=="ME")hasMeleeIcon=true;
- Assert(hasMeleeIcon,"Extra-detail beast has melee row");Call(overlay,"ToggleMeleeDetails",meleeCard);
+ Assert(hasMeleeIcon,"Extra-detail beast has melee status icon");
+ Control meleeMarker=null;foreach(Control child in beastPanel.Controls)if((child.Tag as string)=="ME")meleeMarker=child;
+ Control lifeIcon=null;foreach(Control child in beastPanel.Controls)if((child.Tag as string)=="BiL")lifeIcon=child;
+ Assert(meleeMarker!=null&&lifeIcon!=null&&meleeMarker.Size==lifeIcon.Size&&meleeMarker.Top==lifeIcon.Top,"Melee marker uses status icon size and second-row baseline");
+ int enabledMarkerRight=meleeMarker.Right;
+ Assert(enabledMarkerRight==beastPanel.Width-9,"Melee marker occupies fixed rightmost slot");
+ bool beforeMeleeMarker=settings.ShowBeastBlightfall;settings.ShowBeastBlightfall=false;Call(overlay,"RefreshCards",false);
+ Control standaloneMelee=null;foreach(Control child in beastPanel.Controls)if((child.Tag as string)=="ME")standaloneMelee=child;
+ Assert(standaloneMelee!=null&&standaloneMelee.Right==enabledMarkerRight,"Melee slot stays fixed when BF marker is disabled");
+ settings.ShowBeastBlightfall=beforeMeleeMarker;Call(overlay,"RefreshCards",false);
+Call(overlay,"ToggleMeleeDetails",meleeCard);
  var meleeRows=(IDictionary)Field(cache[meleeCard],"Rows");Assert(meleeRows.Contains(meleeHit),"Melee dropdown creates target hit row");
  var expandedMeleeRow=(Control)meleeRows[meleeHit];
  // Visible inherits the hidden test form's state. Check the expansion geometry instead.
@@ -167,6 +177,11 @@ class UiPerformanceTests {
  Assert(beastPull!=null&&blightPull!=null,"Both event types show pull names");
  Assert(beastPull.Bounds==blightPull.Bounds,"Pull names share the same heading position and width");
  Assert(beastPull.Font.Size==blightPull.Font.Size&&beastPull.Font.Size==settings.TextSize,"Headers never shrink per event");
+ Assert(Card(cache,beastHeader).Height==Card(cache,blightHeader).Height,"Closed detailed BF and BB cards have equal height");
+ Control detailMelee=null,detailScythe=null;
+ foreach(Control child in Card(cache,beastHeader).Controls)if((child.Tag as string)=="ME")detailMelee=child;
+ foreach(Control child in Card(cache,blightHeader).Controls)if((child.Tag as string)=="SC")detailScythe=child;
+ if(detailScythe!=null)Assert(detailMelee.Bounds==detailScythe.Bounds,"Melee and Scythe share the rightmost status slot");
  }
  settings.IconSize=26;settings.TextSize=10;overlay.ClientSize=new System.Drawing.Size(500,390);
  tracker.Reset();
@@ -250,6 +265,51 @@ class UiPerformanceTests {
 
  Call(overlay,"ScrollTo",(int)Field(overlay,"scrollPixels")-10);
  Assert(Object.ReferenceEquals(latestHeader,latestPanel.Controls[0]),"Small scroll reuses rendered controls");
+ // Responsive columns preserve chronology, dropdown geometry and viewport bounds.
+ tracker.Reset();settings.SideBySide=true;settings.GroupByEventType=false;settings.ShowBeasts=true;
+ var gridEntries=new System.Collections.Generic.List<Entry>();
+ for(int i=0;i<8;i++){
+ var item=MakeEntry(1);item.Number=i+1;item.Sequence=i;item.Time=new DateTime(2026,10,1).AddSeconds(i);
+ item.Beast=(i%2==1);gridEntries.Add(item);tracker.Entries.Add(item);
+ }
+ foreach(bool compact in new[]{true,false}){
+ settings.MiniCards=compact;
+ foreach(int windowWidth in new[]{679,680,1019,1020,1360,340}){
+ overlay.ClientSize=new System.Drawing.Size(windowWidth,600);Call(overlay,"RefreshCards",false);Call(overlay,"ScrollTo",0);
+ int columns=windowWidth/340;
+ Assert((int)Field(overlay,"layoutColumns")==columns,"Column threshold matches window width");
+ for(int i=0;i<gridEntries.Count;i++){
+ var panel=Card(cache,gridEntries[i]);
+ if(i%columns!=0){var leftPanel=Card(cache,gridEntries[i-1]);
+ Assert((int)panel.Tag==(int)leftPanel.Tag,"Chronological neighbours share a row");
+ Assert((int)Field(cache[gridEntries[i]],"ColumnLeft")>=(int)Field(cache[gridEntries[i-1]],"ColumnLeft")+leftPanel.Width,"Neighbour columns do not overlap");}
+ if(i>=columns)Assert((int)panel.Tag>=(int)Field(cache[gridEntries[i-columns]],"RowBottom"),"Following row clears tallest previous card");
+ Assert((int)Field(cache[gridEntries[i]],"ColumnLeft")+panel.Width<=((Control)Field(overlay,"cards")).ClientSize.Width,"Every column fits viewport");
+ }
+ }
+ overlay.ClientSize=new System.Drawing.Size(680,600);Call(overlay,"RefreshCards",false);Call(overlay,"ScrollTo",0);
+ var expanded=Card(cache,gridEntries[0]);var neighbour=Card(cache,gridEntries[1]);var following=Card(cache,gridEntries[2]);
+ int closedRowTop=(int)following.Tag;var neighbourHeader=neighbour.Controls[0];
+ Call(overlay,"ToggleDetails",gridEntries[0],true);
+ Assert((int)following.Tag>closedRowTop,"Dropdown pushes next grid row down");
+ Assert((int)following.Tag>=(int)expanded.Tag+expanded.Height,"Expanded dropdown does not overlap next row");
+ Assert((int)expanded.Tag==(int)neighbour.Tag,"Neighbour remains aligned to same row top");
+ Assert(Object.ReferenceEquals(neighbourHeader,neighbour.Controls[0]),"Grid dropdown reuses neighbour controls");
+ Call(overlay,"ToggleDetails",gridEntries[0],true);Assert((int)following.Tag==closedRowTop,"Closing dropdown restores grid row");
+ }
+ settings.MiniCards=true;overlay.ClientSize=new System.Drawing.Size(1020,390);tracker.Reset();
+ for(int i=0;i<1200;i++){var item=MakeEntry(1);item.Sequence=i;item.Time=new DateTime(2026,10,1).AddSeconds(i);tracker.Entries.Add(item);}
+ Call(overlay,"RefreshCards",false);
+ foreach(int offset in new[]{0,(int)Field(overlay,"totalContentHeight")/2,(int)Field(overlay,"totalContentHeight")}){
+ Call(overlay,"ScrollTo",offset);int count=0;
+ foreach(object state in (IEnumerable)Field(overlay,"presentedCards")){
+ var panel=(Control)Field(state,"Card");count++;
+ Assert(panel.Left==(int)Field(state,"ColumnLeft")&&panel.Top==(int)panel.Tag-(int)Field(overlay,"scrollPixels"),"Long grid scroll keeps visible geometry correct");
+ }
+ Assert(count>0&&count<90,"Long grid history presents only viewport rows");
+ }
+ settings.SideBySide=false;Call(overlay,"RefreshCards",false);
+ Assert((int)Field(overlay,"layoutColumns")==1,"Disabling side-by-side restores one column");
  Call(overlay,"ResetSession");Assert(cache.Count==0,"Reset clears deferred and rendered cards");
  }
  Console.WriteLine("Passed "+checks+" UI performance checks");
