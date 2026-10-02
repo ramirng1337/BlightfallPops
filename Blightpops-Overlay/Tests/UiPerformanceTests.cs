@@ -55,6 +55,24 @@ class UiPerformanceTests {
  Assert(cache.Count==0,"Session reset removes all cached cards");Assert(card.IsDisposed&&secondCard.IsDisposed,"Reset disposes historical cards");
  Assert(tracker.Entries.Count==0,"Session reset clears tracker");Assert(overlay.Size==size,"Reset preserves window size");
  }
+ // Restore strip changes paint only: hover must not expand the toolbar or shift events.
+ var restoreBar=(Control)Field(overlay,"bar");var eventArea=(Control)Field(overlay,"cards");
+ settings.Collapsed=true;Call(overlay,"ApplyCollapsed");
+ var collapsedSize=overlay.Size;var eventBounds=eventArea.Bounds;
+ foreach(bool transparent in new[]{false,true}){
+ settings.TransparentBackground=transparent;Call(overlay,"ApplyBackground");
+ Call(overlay,"UpdateRestoreStrip",false);
+ Assert(restoreBar.BackColor==(transparent?System.Drawing.Color.Magenta:overlay.BackColor),"Hidden restore strip matches background/key");
+ Call(overlay,"UpdateRestoreStrip",true);
+ Assert(restoreBar.BackColor==System.Drawing.Color.FromArgb(10,11,13),"Hover reveals dark restore strip in either mode");
+ Assert(settings.Collapsed&&!menu.Visible,"Hover leaves toolbar and options collapsed");
+ Assert(overlay.Size==collapsedSize&&eventArea.Bounds==eventBounds,"Hover preserves window and event geometry");
+ Call(overlay,"UpdateRestoreStrip",false);
+ }
+ settings.Locked=true;Call(overlay,"ApplyLock");Call(overlay,"ExpandFromStrip",null,EventArgs.Empty);
+ Assert(!settings.Collapsed,"Restore strip can expand toolbar while locked");
+ Assert(restoreBar.BackColor==System.Drawing.Color.FromArgb(10,11,13),"Expanded toolbar stays dark");
+ settings.Locked=false;settings.TransparentBackground=false;Call(overlay,"ApplyLock");Call(overlay,"ApplyBackground");
  // Wide first-column numbers retain their measured space in narrow cards.
  tracker.Reset();var millions=MakeEntry(1);millions.Dread=10500000;millions.Virulent=10100000;tracker.Entries.Add(millions);
  overlay.ClientSize=new System.Drawing.Size(385,390);settings.IconSize=23;settings.TextSize=14;
