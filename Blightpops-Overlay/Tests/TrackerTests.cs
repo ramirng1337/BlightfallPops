@@ -33,6 +33,7 @@ class TrackerTests {
  var discovered=roster.GetPlayers();
  Assert(discovered.Count==2,"Discover two distinct player GUIDs");
  Assert(discovered[0].Name=="Tester"&&discovered[1].Name=="Other-Realm","Retain logged names and first-seen order");
+ roster.Finish(); // Pending casts are committed on Finish, not immediately on cast.
  Assert(roster.Entries.Count==1&&roster.Entries[0].PlayerGuid=="Player-1-Test","Existing own-player behavior preserved and entry owner recorded");
  roster.Reset();Assert(roster.GetPlayers().Count==0,"Reset clears player discovery");
  // Beast melee is per summon and excluded from CB/BiL pop totals.
