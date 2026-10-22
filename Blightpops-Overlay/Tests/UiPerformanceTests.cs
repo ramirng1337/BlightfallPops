@@ -25,7 +25,7 @@ class UiPerformanceTests {
     }
     static Entry Sample(int number) {
         var entry = new Entry { Number = number, Sequence = number,
-            Time = new DateTime(2026, 9, 30, 12, 0, number),
+            Time = new DateTime(2026, 9, 30, 12, 0, 0).AddSeconds(number),
             Segment = "Test", Dread = 100, Virulent = 200,
             PlayerGuid = "Player-Test-Own", PlayerName = "Tester-Realm" };
         entry.Hits.Add(new Hit { Kind = "DP", Amount = 100, Target = "Target" });
