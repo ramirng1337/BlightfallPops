@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Reflection;
 using System.Windows.Forms;
@@ -26,7 +26,8 @@ class UiPerformanceTests {
     static Entry Sample(int number) {
         var entry = new Entry { Number = number, Sequence = number,
             Time = new DateTime(2026, 9, 30, 12, 0, number),
-            Segment = "Test", Dread = 100, Virulent = 200 };
+            Segment = "Test", Dread = 100, Virulent = 200,
+            PlayerGuid = "Player-Test-Own", PlayerName = "Tester-Realm" };
         entry.Hits.Add(new Hit { Kind = "DP", Amount = 100, Target = "Target" });
         entry.Hits.Add(new Hit { Kind = "VP", Amount = 200, Target = "Target" });
         return entry;
@@ -45,13 +46,27 @@ class UiPerformanceTests {
             settings.MiniCards = false;
             overlay.ClientSize = new System.Drawing.Size(500, 390);
             var tracker = (Tracker)Field(overlay, "tracker");
+            tracker.Guid = "Player-Test-Own";
+            settings.PlayerMode = "Myself";
             var cache = (IDictionary)Field(overlay, "cardCache");
             var first = Sample(1);
             var second = Sample(2);
             tracker.Entries.Add(first);
             tracker.Entries.Add(second);
             Call(overlay, "RefreshCards", false);
-            Assert(cache.Count == 2, "Two cards are created");
+            Assert(cache.Count == 2, "Two own-player cards are created");
+            var foreign = Sample(99);
+            foreign.PlayerGuid = "Player-Test-Other";
+            tracker.Entries.Add(foreign);
+            Call(overlay, "RefreshCards", false);
+            Assert(!cache.Contains(foreign), "Myself hides another player");
+            settings.PlayerMode = "Specific Player";
+            settings.SelectedPlayerGuid = "Player-Test-Other";
+            Call(overlay, "RefreshCards", false);
+            Assert(cache.Contains(foreign), "Specific Player shows selected player");
+            Assert(!Card(cache, first).Visible, "Specific Player hides own card");
+            settings.PlayerMode = "Myself";
+            Call(overlay, "RefreshCards", false);
             var firstCard = Card(cache, first);
             var secondCard = Card(cache, second);
             Assert(firstCard.Height > 0 && secondCard.Height > 0, "Cards have height");
@@ -65,6 +80,8 @@ class UiPerformanceTests {
             Call(overlay, "ToggleDetails", first, true);
             Assert(!first.DOpen, "DP details close");
             Assert(firstCard.Height == originalHeight, "Closed card restores height");
+            tracker.Entries.Remove(foreign);
+            Call(overlay, "RefreshCards", false);
             var third = Sample(3);
             tracker.Entries.Add(third);
             Call(overlay, "RefreshCards", true);
