@@ -20,6 +20,7 @@ namespace BlightfallPopsDesktop {
         public long Sequence;
         public DateTime Time;
         public string Segment, Guid;
+        public string PlayerGuid, PlayerName;
         public long Dread, Virulent, Corrupted, Life, Melee;
         // Damage totals already include overkill. Keep this as a separate breakdown.
         public long Overkill {get{long total=0;foreach(var hit in Hits)total+=hit.Overkill;return total;}}
@@ -58,8 +59,35 @@ namespace BlightfallPopsDesktop {
             File.WriteAllLines(Path.Combine(DirectoryPath,"settings.txt"),lines,Encoding.UTF8);
         }
     }
+    // Player identities are keyed by GUID, never by display name. Realm suffixes
+    // are retained exactly as reported by the combat log.
+    internal sealed class CombatPlayer {
+        public string Guid, Name;
+        public DateTime FirstSeen, LastSeen;
+        public int EventCount;
+    }
     internal sealed class Tracker {
         public readonly List<Entry> Entries=new List<Entry>();
+        public readonly Dictionary<string,CombatPlayer> Players=new Dictionary<string,CombatPlayer>(StringComparer.Ordinal);
+        public List<CombatPlayer> GetPlayers() {
+            var result=new List<CombatPlayer>(Players.Values);
+            result.Sort(delegate(CombatPlayer a,CombatPlayer b) {
+                int cmp=a.FirstSeen.CompareTo(b.FirstSeen);
+                return cmp!=0?cmp:String.Compare(a.Guid,b.Guid,StringComparison.Ordinal);
+            });
+            return result;
+        }
+        private void RecordPlayer(string guid,string name,DateTime time) {
+            if(!guid.StartsWith("Player-",StringComparison.Ordinal))return;
+            CombatPlayer player;
+            if(!Players.TryGetValue(guid,out player)) {
+                player=new CombatPlayer{Guid=guid,Name=name,FirstSeen=time};
+                Players.Add(guid,player);
+            }
+            if(!String.IsNullOrEmpty(name)&&name!="nil")player.Name=name;
+            player.LastSeen=time;
+            player.EventCount++;
+        }
         public event Action Changed;
         public string Player="", Guid="", Segment="";
         public int WindowMs=1200;
@@ -81,7 +109,7 @@ namespace BlightfallPopsDesktop {
         private static readonly string[] logDates={"M/d/yyyy HH:mm:ss.FFFFFFF","d.M.yyyy HH:mm:ss.FFFFFFF"};
         private void Notify(){if(Changed!=null)Changed();}
         public void Reset(long at=0) {
-            Entries.Clear();pending=null;recentBlightfall=null;recentBeast=null;beasts.Clear();attempts.Clear();scythe.Clear();soulReaper.Clear();
+            Entries.Clear();Players.Clear();pending=null;recentBlightfall=null;recentBeast=null;beasts.Clear();attempts.Clear();scythe.Clear();soulReaper.Clear();
             castNumber=beastNumber=pullNumber=0;nextSequence=0;Guid=Player=Segment=encounter=remainder="";
             logDecoder.Reset();lastOwnCombat=DateTime.MinValue;Position=at;SkipFirstLine=at>0;Notify();
         }
@@ -164,9 +192,11 @@ namespace BlightfallPopsDesktop {
             if(kind=="ENCOUNTER_END"){Finish();encounter=Segment="";lastOwnCombat=DateTime.MinValue;return;}
             if(f.Count<12)return;
             string source=F(f,1), dest=F(f,5), spell=F(f,9);
+            RecordPlayer(source,F(f,2),time);
+            RecordPlayer(dest,F(f,6),time);
             if(kind=="SPELL_SUMMON"&&spell=="434237"&&source.StartsWith("Player-")&&OwnFlags(F(f,3))&&(Guid==""||Guid==source)) {
                 if(Guid==""){Guid=source;Player=F(f,2);}UpdatePull(time);
-                var beast=new Entry {Beast=true,Number=++beastNumber,Sequence=++nextSequence,Time=time,Segment=Segment,Guid=dest};
+                var beast=new Entry {Beast=true,Number=++beastNumber,Sequence=++nextSequence,Time=time,Segment=Segment,Guid=dest,PlayerGuid=source,PlayerName=F(f,2)};
                 beasts[dest]=beast;recentBeast=beast;Entries.Add(beast);Notify();return;
             }
             if(kind=="SWING_DAMAGE"){
@@ -216,7 +246,7 @@ namespace BlightfallPopsDesktop {
                 }
                 bool value;pending=new Entry {Time=time,Sequence=++nextSequence,Segment=Segment,
                     Scythe=scythe.TryGetValue(source,out value)?(bool?)value:null,
-                    SoulReaper=affected>0,SoulReaperTargets=affected};return;
+                    SoulReaper=affected>0,SoulReaperTargets=affected,PlayerGuid=source,PlayerName=F(f,2)};return;
             }
             if(source!=Guid||(kind!="SPELL_DAMAGE"&&kind!="SPELL_PERIODIC_DAMAGE"))return;
             // An encounter-end marker may precede the last damage rows in the same

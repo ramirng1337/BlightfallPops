@@ -26,6 +26,15 @@ class TrackerTests {
  t.Reset();Send(t,0,Prefix("SPELL_CAST_SUCCESS","1271967"));Send(t,1000,Damage("1241171",100,-1,false,advanced,shortTail));t.Finish();
  Assert(t.Entries[0].Overkill==0,"Nonlethal -1 becomes zero");Assert(t.Entries[0].Hits.Count==1,"Reset clears old cast");
  }
+ // Player discovery is independent of the current single-player damage filter.
+ var roster=new Tracker();
+ Send(roster,0,Prefix("SPELL_CAST_SUCCESS","1271967"));
+ Send(roster,100,Prefix("SPELL_CAST_SUCCESS","1271967").Replace("Player-1-Test,Tester","Player-2-Test,Other-Realm"));
+ var discovered=roster.GetPlayers();
+ Assert(discovered.Count==2,"Discover two distinct player GUIDs");
+ Assert(discovered[0].Name=="Tester"&&discovered[1].Name=="Other-Realm","Retain logged names and first-seen order");
+ Assert(roster.Entries.Count==1&&roster.Entries[0].PlayerGuid=="Player-1-Test","Existing own-player behavior preserved and entry owner recorded");
+ roster.Reset();Assert(roster.GetPlayers().Count==0,"Reset clears player discovery");
  // Beast melee is per summon and excluded from CB/BiL pop totals.
  foreach(bool advancedSwing in new[]{false,true})foreach(bool offhand in new[]{false,true}){
  var melee=new Tracker();Send(melee,0,Prefix("SPELL_SUMMON","434237"));
