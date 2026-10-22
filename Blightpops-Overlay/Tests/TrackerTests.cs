@@ -36,6 +36,29 @@ class TrackerTests {
  roster.Finish(); // Pending casts are committed on Finish, not immediately on cast.
  Assert(roster.Entries.Count==1&&roster.Entries[0].PlayerGuid=="Player-1-Test","Existing own-player behavior preserved and entry owner recorded");
  roster.Reset();Assert(roster.GetPlayers().Count==0,"Reset clears player discovery");
+ // Opt-in multi-player tracking keeps overlapping cast windows separate.
+ var multi=new Tracker{TrackAllPlayers=true};
+ Send(multi,0,Prefix("SPELL_CAST_SUCCESS","1271967"));
+ Send(multi,100,Prefix("SPELL_CAST_SUCCESS","1271967").Replace("Player-1-Test,Tester","Player-2-Test,Other-Realm"));
+ Send(multi,200,Damage("1241171",111,0,false,false,false));
+ Send(multi,250,Damage("1241171",222,0,false,false,false).Replace("Player-1-Test,Tester","Player-2-Test,Other-Realm"));
+ Send(multi,300,Damage("1241167",333,0,false,false,false));
+ multi.Finish();
+ Assert(multi.Entries.Count==2,"Multi-player records both casts");
+ Assert(multi.Entries[0].PlayerGuid=="Player-1-Test"&&multi.Entries[1].PlayerGuid=="Player-2-Test","Cast order and ownership preserved");
+ Assert(multi.Entries[0].Dread==111&&multi.Entries[0].Virulent==333,"First player's hits isolated");
+ Assert(multi.Entries[1].Dread==222&&multi.Entries[1].Virulent==0,"Second player's hits isolated");
+ multi.Reset();Assert(multi.Entries.Count==0&&multi.GetPlayers().Count==0,"Multi-player reset clears roster and events");
+ // A second cast from the same player closes only that player's previous cast.
+ var overlap=new Tracker{TrackAllPlayers=true};
+ Send(overlap,0,Prefix("SPELL_CAST_SUCCESS","1271967"));
+ Send(overlap,100,Prefix("SPELL_CAST_SUCCESS","1271967").Replace("Player-1-Test,Tester","Player-2-Test,Other-Realm"));
+ Send(overlap,200,Prefix("SPELL_CAST_SUCCESS","1271967").Replace("Player-1-Test,Tester","Player-2-Test,Other-Realm"));
+ Send(overlap,300,Damage("1241171",700,0,false,false,false));
+ overlap.Finish();
+ Assert(overlap.Entries.Count==3,"Repeated casts preserve both players' events");
+ Assert(overlap.Entries[0].PlayerGuid=="Player-1-Test"&&overlap.Entries[1].PlayerGuid=="Player-2-Test"&&overlap.Entries[2].PlayerGuid=="Player-2-Test","Entries ordered by original cast sequence");
+ Assert(overlap.Entries[0].Dread==700&&overlap.Entries[1].Dread==0&&overlap.Entries[2].Dread==0,"Damage never attributed across players");
  // Beast melee is per summon and excluded from CB/BiL pop totals.
  foreach(bool advancedSwing in new[]{false,true})foreach(bool offhand in new[]{false,true}){
  var melee=new Tracker();Send(melee,0,Prefix("SPELL_SUMMON","434237"));
