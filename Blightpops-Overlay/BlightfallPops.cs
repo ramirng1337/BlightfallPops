@@ -1,4 +1,4 @@
-﻿// Blightfall Pops desktop overlay: .NET Framework 4.8, Windows Forms, no PowerShell.
+// Blightfall Pops desktop overlay: .NET Framework 4.8, Windows Forms, no PowerShell.
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -642,7 +642,7 @@ namespace BlightfallPopsDesktop {
             }
             if(select.DropDownItems.Count==0)select.Enabled=false;
             menu.Items.Add(select);
-            menu.Closed+=delegate {menu.Dispose();};
+            // Do not dispose here: WinForms may still be processing the clicked menu item.
             menu.Show(Cursor.Position);
         }
         private Button AddAction(Control parent,string glyph,string hint,Color color,Action click) {
