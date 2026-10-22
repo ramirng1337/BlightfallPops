@@ -101,6 +101,8 @@ class UiPerformanceTests {
             Assert(cache.Count == 0, "Reset clears cached cards");
             Assert(firstCard.IsDisposed && secondCard.IsDisposed, "Reset disposes cards");
             settings.MiniCards = true;
+            // ResetSession clears the detected player GUID; simulate detection for the new session.
+            tracker.Guid = "Player-Test-Own";
             var compact = Sample(5);
             tracker.Entries.Add(compact);
             Call(overlay, "RefreshCards", false);
