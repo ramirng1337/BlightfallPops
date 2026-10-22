@@ -519,6 +519,100 @@ namespace BlightfallPopsDesktop {
             if(settings.PlayerMode=="Specific Player")return entry.PlayerGuid==settings.SelectedPlayerGuid;
             return entry.PlayerGuid==tracker.Guid;
         }
+        // Independent comparison window; the main overlay and its filters remain unchanged.
+        private void ShowCompareWindow(){
+            var available=tracker.GetPlayers();
+            var identities=new Dictionary<string,string>(StringComparer.Ordinal);
+            foreach(var p in available)identities[p.Guid]=String.IsNullOrEmpty(p.Name)?p.Guid:p.Name;
+            foreach(var entry in tracker.Entries)
+                if(!String.IsNullOrEmpty(entry.PlayerGuid)&&!identities.ContainsKey(entry.PlayerGuid))
+                    identities[entry.PlayerGuid]=String.IsNullOrEmpty(entry.PlayerName)?entry.PlayerGuid:entry.PlayerName;
+            if(identities.Count<2){
+                MessageBox.Show(this,"At least two players with tracked events are needed.","Compare players",
+                    MessageBoxButtons.OK,MessageBoxIcon.Information);return;
+            }
+            var compare=new Form{Text="Blightfall Pops — Compare players",Size=new Size(1050,680),
+                StartPosition=FormStartPosition.CenterParent,BackColor=background,ForeColor=Color.White,
+                MinimumSize=new Size(650,380)};
+            var toolbar=new FlowLayoutPanel{Dock=DockStyle.Top,Height=42,Padding=new Padding(8,6,0,0),
+                BackColor=Color.FromArgb(30,33,37),WrapContents=false};
+            var leftChoice=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Width=260};
+            var rightChoice=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Width=260};
+            var keys=new List<string>(identities.Keys);keys.Sort(delegate(string a,string b){
+                return String.Compare(identities[a],identities[b],StringComparison.OrdinalIgnoreCase);
+            });
+            foreach(var key in keys){leftChoice.Items.Add(identities[key]+" ["+key+"]");
+                rightChoice.Items.Add(identities[key]+" ["+key+"]");}
+            leftChoice.SelectedIndex=0;rightChoice.SelectedIndex=1;
+            toolbar.Controls.Add(new Label{Text="Left",AutoSize=true,ForeColor=dim,Padding=new Padding(0,5,0,0)});
+            toolbar.Controls.Add(leftChoice);
+            toolbar.Controls.Add(new Label{Text="Right",AutoSize=true,ForeColor=dim,Padding=new Padding(10,5,0,0)});
+            toolbar.Controls.Add(rightChoice);
+            var columns=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,RowCount=1,
+                BackColor=background,Padding=new Padding(5)};
+            columns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
+            columns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
+            var leftPanel=new FlowLayoutPanel{Dock=DockStyle.Fill,FlowDirection=FlowDirection.TopDown,
+                WrapContents=false,AutoScroll=true,BackColor=background};
+            var rightPanel=new FlowLayoutPanel{Dock=DockStyle.Fill,FlowDirection=FlowDirection.TopDown,
+                WrapContents=false,AutoScroll=true,BackColor=background};
+            columns.Controls.Add(leftPanel,0,0);columns.Controls.Add(rightPanel,1,0);
+            compare.Controls.Add(columns);compare.Controls.Add(toolbar);
+            Action<FlowLayoutPanel,string> populate=delegate(FlowLayoutPanel panel,string guid){
+                panel.SuspendLayout();panel.Controls.Clear();
+                var events=new List<Entry>();
+                foreach(var e in tracker.Entries)if(e.PlayerGuid==guid&&!e.Beast)events.Add(e);
+                events.Sort(delegate(Entry a,Entry b){int t=a.Time.CompareTo(b.Time);
+                    return t!=0?t:a.Sequence.CompareTo(b.Sequence);});
+                long dread=0,virulent=0;int hits=0;
+                foreach(var e in events){dread+=e.Dread;virulent+=e.Virulent;hits+=e.Hits.Count;}
+                panel.Controls.Add(new Label{Text=identities[guid]+"  •  "+events.Count+" casts  •  "+
+                    Format(dread+virulent)+" damage  •  "+hits+" hits",ForeColor=green,
+                    Font=LabelFont(true),AutoSize=false,Width=460,Height=38,
+                    Padding=new Padding(7,8,0,0)});
+                int index=0;
+                foreach(var e in events){
+                    index++;
+                    var card=new Panel{Width=460,Height=66,BackColor=rowColor,Margin=new Padding(3,2,3,4)};
+                    var title=new Label{Text="#"+index+"  "+e.Time.ToString("HH:mm:ss.fff")+
+                        "  "+(e.Segment??""),ForeColor=Color.White,AutoSize=false,
+                        Location=new Point(9,7),Size=new Size(440,21)};
+                    var summary=new Label{Text="DP "+Format(e.Dread)+"   VP "+Format(e.Virulent)+
+                        "   Total "+Format(e.Dread+e.Virulent)+"   Hits "+e.Hits.Count,
+                        ForeColor=green,Location=new Point(9,33),Size=new Size(440,24)};
+                    card.Controls.Add(title);card.Controls.Add(summary);
+                    var details=new Label{AutoSize=false,Visible=false,ForeColor=dim,
+                        Location=new Point(9,63),Width=440};
+                    var lines=new StringBuilder();
+                    foreach(var hit in e.Hits)lines.AppendLine(hit.Kind+"  "+Format(hit.Amount)+
+                        (hit.Crit?"  CRIT":"")+"  "+(hit.Target??""));
+                    details.Text=lines.Length==0?"No recorded hits":lines.ToString().TrimEnd();
+                    details.Height=Math.Max(24,TextRenderer.MeasureText(details.Text,LabelFont(false),
+                        new Size(430,int.MaxValue),TextFormatFlags.WordBreak).Height+8);
+                    card.Controls.Add(details);
+                    Action toggle=delegate{details.Visible=!details.Visible;
+                        card.Height=details.Visible?details.Bottom+8:66;};
+                    card.Cursor=Cursors.Hand;title.Cursor=Cursors.Hand;summary.Cursor=Cursors.Hand;
+                    card.Click+=delegate{toggle();};title.Click+=delegate{toggle();};
+                    summary.Click+=delegate{toggle();};
+                    panel.Controls.Add(card);
+                }
+                panel.ResumeLayout();
+            };
+            Action refresh=delegate{
+                if(leftChoice.SelectedIndex>=0)populate(leftPanel,keys[leftChoice.SelectedIndex]);
+                if(rightChoice.SelectedIndex>=0)populate(rightPanel,keys[rightChoice.SelectedIndex]);
+            };
+            leftChoice.SelectedIndexChanged+=delegate{refresh();};
+            rightChoice.SelectedIndexChanged+=delegate{refresh();};
+            columns.Resize+=delegate{
+                int w=Math.Max(250,(columns.ClientSize.Width-35)/2);
+                foreach(Control c in leftPanel.Controls)c.Width=w;
+                foreach(Control c in rightPanel.Controls)c.Width=w;
+            };
+            refresh();
+            compare.Show(this);
+        }
         private void ShowPlayerMenu(){
             var menu=new ContextMenuStrip{BackColor=Color.FromArgb(30,33,37),ForeColor=Color.White,ShowImageMargin=false};
             foreach(var mode in new[]{"Myself","Specific Player","All Players"}){
@@ -533,6 +627,10 @@ namespace BlightfallPopsDesktop {
                 };
                 menu.Items.Add(item);
             }
+            menu.Items.Add(new ToolStripSeparator());
+            var compareItem=new ToolStripMenuItem("Compare two players...");
+            compareItem.Click+=delegate{ShowCompareWindow();};
+            menu.Items.Add(compareItem);
             menu.Items.Add(new ToolStripSeparator());
             var select=new ToolStripMenuItem("Select player ("+tracker.GetPlayers().Count+")");
             foreach(var player in tracker.GetPlayers()){
