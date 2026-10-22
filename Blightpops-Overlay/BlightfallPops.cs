@@ -31,6 +31,7 @@ namespace BlightfallPopsDesktop {
         public int Width=500, Height=390, X=int.MinValue, Y=int.MinValue, WindowMs=1200, IconSize=26, TextSize=10;
         public bool Locked=false, AlwaysOnTop=true, WatchLog=true, ShowBeasts=true, ShowBeastBlightfall=true, ShowSoulReaper=false, ShowScythe=true, ShowOverkill=false, CompactNumbers=true, Collapsed=false, GroupByEventType=false, MiniCards=true;
         public string Log="";
+        public string PlayerMode="Myself", SelectedPlayerGuid="";
         public static readonly string DirectoryPath=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"BlightfallPopsDesktop");
         public static Settings Load() {
             var s=new Settings(); var file=Path.Combine(DirectoryPath,"settings.txt");
@@ -39,6 +40,8 @@ namespace BlightfallPopsDesktop {
                 int sep=line.IndexOf('='); if(sep<1)continue;
                 var key=line.Substring(0,sep); var value=line.Substring(sep+1); int n; bool b;
                 if (key=="Log") s.Log=value;
+                else if(key=="PlayerMode"&&(value=="Myself"||value=="Specific Player"||value=="All Players"))s.PlayerMode=value;
+                else if(key=="SelectedPlayerGuid")s.SelectedPlayerGuid=value;
                 else if (int.TryParse(value,out n)) {
                     switch(key) { case "Width": s.Width=n;break;case "Height":s.Height=n;break;case "X":s.X=n;break;case "Y":s.Y=n;break;case "WindowMs":s.WindowMs=n;break;case "IconSize":s.IconSize=n;break;case "TextSize":s.TextSize=n;break; }
                 } else if(bool.TryParse(value,out b)) {
@@ -55,7 +58,7 @@ namespace BlightfallPopsDesktop {
             var lines=new [] { "Log="+Log,"Width="+Width,"Height="+Height,"X="+X,"Y="+Y,"WindowMs="+WindowMs,
                 "IconSize="+IconSize,"TextSize="+TextSize,"Locked="+Locked,"AlwaysOnTop="+AlwaysOnTop,"WatchLog="+WatchLog,"ShowBeasts="+ShowBeasts,
                 "ShowBeastBlightfall="+ShowBeastBlightfall,"ShowSoulReaper="+ShowSoulReaper,"ShowScythe="+ShowScythe,"ShowOverkill="+ShowOverkill,"CompactNumbers="+CompactNumbers,"Collapsed="+Collapsed,
-                "GroupByEventType="+GroupByEventType,"ExtraDetails="+(!MiniCards) };
+                "GroupByEventType="+GroupByEventType,"ExtraDetails="+(!MiniCards),"PlayerMode="+PlayerMode,"SelectedPlayerGuid="+SelectedPlayerGuid };
             File.WriteAllLines(Path.Combine(DirectoryPath,"settings.txt"),lines,Encoding.UTF8);
         }
     }
@@ -378,6 +381,8 @@ namespace BlightfallPopsDesktop {
 
         private readonly Settings settings=Settings.Load();
         private readonly Tracker tracker=new Tracker();
+        private readonly Dictionary<string,bool> playerExpanded=new Dictionary<string,bool>(StringComparer.Ordinal);
+        private readonly Dictionary<string,Panel> playerHeaders=new Dictionary<string,Panel>(StringComparer.Ordinal);
         private readonly Panel bar=new Panel(), cards=new BufferedPanel(), options=new Panel(), grip=new Panel(), scrollTrack=new Panel();
         private readonly Label status=new Label();
         private readonly Timer poll=new Timer();
@@ -457,6 +462,8 @@ namespace BlightfallPopsDesktop {
             });
             logButton.Paint+=PaintLogButton;
             DrawToolbarIcon(AddAction(actions,"","Options",dim,delegate {ToggleOptions();}),"options");
+            var playerButton=AddAction(actions,"P","Player filter / player list",green,delegate {ShowPlayerMenu();});
+            playerButton.Font=new Font("Segoe UI",11,FontStyle.Bold);
             // RightToLeft flow places the last added control at the far left.
             miniButton=AddAction(actions,"","Extra details: show or hide pull names and larger events",dim,delegate {
                 settings.MiniCards=!settings.MiniCards;scrollPixels=0;miniButton.Invalidate();RefreshCards();Save();
@@ -490,7 +497,7 @@ namespace BlightfallPopsDesktop {
                     ScrollTo(Math.Max(0,totalContentHeight-cards.ClientSize.Height));
             };Move+=delegate {if(Visible&&WindowState==FormWindowState.Normal)Save();};
             FormClosing+=delegate {EndResizePreview(false);Save();poll.Stop();toolTip.Dispose();if(artwork!=null)artwork.Dispose();foreach(var image in spellIcons.Values)image.Dispose();foreach(var font in labelFonts.Values)font.Dispose();};
-            tracker.WindowMs=settings.WindowMs;tracker.Changed+=delegate {dirty=true;};
+            tracker.WindowMs=settings.WindowMs;tracker.TrackAllPlayers=true;tracker.Changed+=delegate {dirty=true;};
             poll.Interval=350;poll.Tick+=delegate {if(resizeStart.HasValue)return;
                 if(scanningFullLog){ContinueFullLogScan();UpdateLogButton();return;}
                 try {if(settings.WatchLog&&settings.Log!=""){
@@ -504,6 +511,41 @@ namespace BlightfallPopsDesktop {
                 if(dirty){dirty=false;RefreshCards(true);}};
             ApplyCollapsed();ApplyLock();ApplyBeastButton();UpdateLogButton();LayoutWindow();
             Shown+=delegate {if(!File.Exists(settings.Log))ChooseLog();else LoadLog(settings.Log);poll.Start();CheckForUpdates(true);};
+        }
+        // Filter only the presentation; retain all players in the tracker so a mode switch
+        // never requires replaying or losing the current combat-log session.
+        private bool PlayerVisible(Entry entry){
+            if(settings.PlayerMode=="All Players")return true;
+            if(settings.PlayerMode=="Specific Player")return entry.PlayerGuid==settings.SelectedPlayerGuid;
+            return entry.PlayerGuid==tracker.Guid;
+        }
+        private void ShowPlayerMenu(){
+            var menu=new ContextMenuStrip{BackColor=Color.FromArgb(30,33,37),ForeColor=Color.White,ShowImageMargin=false};
+            foreach(var mode in new[]{"Myself","Specific Player","All Players"}){
+                string chosen=mode;
+                var item=new ToolStripMenuItem(mode){Checked=settings.PlayerMode==mode};
+                item.Click+=delegate {
+                    settings.PlayerMode=chosen;
+                    if(chosen=="Specific Player"&&String.IsNullOrEmpty(settings.SelectedPlayerGuid)){
+                        var players=tracker.GetPlayers();if(players.Count>0)settings.SelectedPlayerGuid=players[0].Guid;
+                    }
+                    scrollPixels=0;RefreshCards();Save();
+                };
+                menu.Items.Add(item);
+            }
+            menu.Items.Add(new ToolStripSeparator());
+            var select=new ToolStripMenuItem("Select player ("+tracker.GetPlayers().Count+")");
+            foreach(var player in tracker.GetPlayers()){
+                var current=player;
+                var item=new ToolStripMenuItem((String.IsNullOrEmpty(player.Name)?player.Guid:player.Name)+" ("+player.EventCount+")"){
+                    Checked=settings.PlayerMode=="Specific Player"&&settings.SelectedPlayerGuid==player.Guid};
+                item.Click+=delegate {settings.SelectedPlayerGuid=current.Guid;settings.PlayerMode="Specific Player";scrollPixels=0;RefreshCards();Save();};
+                select.DropDownItems.Add(item);
+            }
+            if(select.DropDownItems.Count==0)select.Enabled=false;
+            menu.Items.Add(select);
+            menu.Closed+=delegate {menu.Dispose();};
+            menu.Show(Cursor.Position);
         }
         private Button AddAction(Control parent,string glyph,string hint,Color color,Action click) {
             var button=new Button{Text=glyph,Font=new Font("Segoe UI Symbol",14,FontStyle.Bold),ForeColor=color,BackColor=bar.BackColor,
@@ -1052,7 +1094,7 @@ namespace BlightfallPopsDesktop {
             var font=SizedFont(settings.TextSize,true);
             int titleWidth=0,totalWidth=0;
             foreach(var entry in tracker.Entries){
-                if(entry.Beast&&!settings.ShowBeasts)continue;
+                if(!PlayerVisible(entry)||entry.Beast&&!settings.ShowBeasts)continue;
                 string title=entry.Beast?"Beast #"+entry.Number:entry.Time.ToString("HH:mm:ss")+" #"+entry.Number;
                 string total=Format(entry.Beast?entry.Corrupted+entry.Life:entry.Dread+entry.Virulent);
                 titleWidth=Math.Max(titleWidth,TextRenderer.MeasureText(title,font).Width+4);
@@ -1200,17 +1242,53 @@ namespace BlightfallPopsDesktop {
             var live=new HashSet<Entry>(tracker.Entries);
             var stale=new List<Entry>();foreach(var entry in cardCache.Keys)if(!live.Contains(entry))stale.Add(entry);
             foreach(var entry in stale){var state=cardCache[entry];cards.Controls.Remove(state.Card);state.Card.Dispose();cardCache.Remove(entry);}
-            foreach(var state in cardCache.Values)if(state.Entry.Beast&&!settings.ShowBeasts)state.Card.Visible=false;
+            foreach(var state in cardCache.Values)if(!PlayerVisible(state.Entry)||state.Entry.Beast&&!settings.ShowBeasts)state.Card.Visible=false;
+            foreach(var header in playerHeaders.Values)header.Visible=false;
             visibleCards.Clear();
             int y=3;
             var ordered=new List<Entry>(tracker.Entries);
             ordered.Sort(delegate(Entry a,Entry b){
+                if(settings.PlayerMode=="All Players"&&a.PlayerGuid!=b.PlayerGuid){
+                    CombatPlayer ap,bp;
+                    bool ah=tracker.Players.TryGetValue(a.PlayerGuid??"",out ap),bh=tracker.Players.TryGetValue(b.PlayerGuid??"",out bp);
+                    if(ah&&bh){int cmp=ap.FirstSeen.CompareTo(bp.FirstSeen);if(cmp!=0)return cmp;}
+                    return String.Compare(a.PlayerGuid,b.PlayerGuid,StringComparison.Ordinal);
+                }
                 if(settings.GroupByEventType&&a.Beast!=b.Beast)return a.Beast?-1:1;
                 int byTime=a.Time.CompareTo(b.Time);
                 return byTime!=0?byTime:a.Sequence.CompareTo(b.Sequence);
             });
             if(!ShowMiniCards)UpdateDetailHeaderColumns(Math.Max(260,cards.ClientSize.Width-7));
-            foreach(var entry in ordered){if(entry.Beast&&!settings.ShowBeasts)continue;
+            string lastPlayer=null;
+            foreach(var entry in ordered){if(!PlayerVisible(entry)||entry.Beast&&!settings.ShowBeasts)continue;
+                if(settings.PlayerMode=="All Players"&&entry.PlayerGuid!=lastPlayer){
+                    lastPlayer=entry.PlayerGuid;
+                    string groupKey=lastPlayer??"unknown";
+                    Panel header;
+                    if(!playerHeaders.TryGetValue(groupKey,out header)){
+                        header=new BufferedPanel{BackColor=Color.FromArgb(42,48,56),Height=29,Cursor=Cursors.Hand};
+                        playerHeaders.Add(groupKey,header);cards.Controls.Add(header);
+                        header.Click+=delegate {
+                            bool expanded;playerExpanded.TryGetValue(groupKey,out expanded);
+                            playerExpanded[groupKey]=!expanded;RefreshCards();
+                        };
+                    }
+                    bool open; if(!playerExpanded.TryGetValue(groupKey,out open))open=true;
+                    CombatPlayer known;string playerName=tracker.Players.TryGetValue(groupKey,out known)?known.Name:entry.PlayerName;
+                    header.Width=Math.Max(260,cards.ClientSize.Width-7);header.Left=3;header.Top=y-oldScroll;
+                    header.Controls.Clear();
+                    var nameLabel=new Label{Text=(open?"▾  ":"▸  ")+(String.IsNullOrEmpty(playerName)?groupKey:playerName),
+                        ForeColor=Color.White,Font=LabelFont(true),AutoEllipsis=true,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,
+                        Padding=new Padding(9,0,0,0),Cursor=Cursors.Hand};
+                    nameLabel.Click+=delegate {bool expanded;playerExpanded.TryGetValue(groupKey,out expanded);playerExpanded[groupKey]=!expanded;RefreshCards();};
+                    header.Controls.Add(nameLabel);header.Visible=true;y+=header.Height+5;
+                }
+                if(settings.PlayerMode=="All Players"){
+                    bool expanded;if(playerExpanded.TryGetValue(entry.PlayerGuid??"unknown",out expanded)&&!expanded){
+                        CardState hidden;if(cardCache.TryGetValue(entry,out hidden))hidden.Card.Visible=false;
+                        continue;
+                    }
+                }
                 int width=Math.Max(260,cards.ClientSize.Width-7);
                 string signature=CardSignature(entry,width);CardState state;
                 if(!cardCache.TryGetValue(entry,out state)){
