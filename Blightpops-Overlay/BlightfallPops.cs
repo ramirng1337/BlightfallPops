@@ -462,8 +462,6 @@ namespace BlightfallPopsDesktop {
             });
             logButton.Paint+=PaintLogButton;
             DrawToolbarIcon(AddAction(actions,"","Options",dim,delegate {ToggleOptions();}),"options");
-            var compareButton=AddAction(actions,"","Compare two players",dim,delegate {ShowCompareWindow();});
-            DrawToolbarIcon(compareButton,"compare");
             var playerButton=AddAction(actions,"P","Player filter / player list",green,delegate {ShowPlayerMenu();});
             playerButton.Font=new Font("Segoe UI",11,FontStyle.Bold);
             // RightToLeft flow places the last added control at the far left.
@@ -522,119 +520,98 @@ namespace BlightfallPopsDesktop {
             return entry.PlayerGuid==tracker.Guid;
         }
         // Independent comparison window; the main overlay and its filters remain unchanged.
-        // Dedicated comparison UI. Does not change the main overlay's player filter or cache.
         private void ShowCompareWindow(){
+            var available=tracker.GetPlayers();
             var identities=new Dictionary<string,string>(StringComparer.Ordinal);
-            foreach(var p in tracker.GetPlayers())identities[p.Guid]=String.IsNullOrEmpty(p.Name)?p.Guid:p.Name;
-            foreach(var e in tracker.Entries)
-                if(!String.IsNullOrEmpty(e.PlayerGuid)&&!identities.ContainsKey(e.PlayerGuid))
-                    identities[e.PlayerGuid]=String.IsNullOrEmpty(e.PlayerName)?e.PlayerGuid:e.PlayerName;
-            var keys=new List<string>();
-            foreach(var key in identities.Keys){
-                bool hasCast=false;
-                foreach(var e in tracker.Entries)if(e.PlayerGuid==key&&!e.Beast){hasCast=true;break;}
-                if(hasCast)keys.Add(key);
+            foreach(var p in available)identities[p.Guid]=String.IsNullOrEmpty(p.Name)?p.Guid:p.Name;
+            foreach(var entry in tracker.Entries)
+                if(!String.IsNullOrEmpty(entry.PlayerGuid)&&!identities.ContainsKey(entry.PlayerGuid))
+                    identities[entry.PlayerGuid]=String.IsNullOrEmpty(entry.PlayerName)?entry.PlayerGuid:entry.PlayerName;
+            if(identities.Count<2){
+                MessageBox.Show(this,"At least two players with tracked events are needed.","Compare players",
+                    MessageBoxButtons.OK,MessageBoxIcon.Information);return;
             }
-            keys.Sort(delegate(string a,string b){return String.Compare(identities[a],identities[b],StringComparison.OrdinalIgnoreCase);});
-            if(keys.Count<2){MessageBox.Show(this,"At least two players with Blightfall casts are needed.",
-                "Compare players",MessageBoxButtons.OK,MessageBoxIcon.Information);return;}
-            var window=new Form{Text="Blightfall Pops — Player comparison",Size=new Size(1160,760),
-                MinimumSize=new Size(720,430),StartPosition=FormStartPosition.CenterParent,
-                BackColor=background,ForeColor=Color.White};
-            var header=new Panel{Dock=DockStyle.Top,Height=62,BackColor=Color.FromArgb(27,30,35)};
-            var leftChoice=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Left=16,Top=25,Width=310};
-            var rightChoice=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Left=355,Top=25,Width=310};
-            foreach(var key in keys){leftChoice.Items.Add(identities[key]);rightChoice.Items.Add(identities[key]);}
-            header.Controls.Add(new Label{Text="PLAYER 1",Left=16,Top=6,Width=180,ForeColor=dim});
-            header.Controls.Add(new Label{Text="PLAYER 2",Left=355,Top=6,Width=180,ForeColor=dim});
-            header.Controls.Add(leftChoice);header.Controls.Add(rightChoice);
-            var split=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,RowCount=1,
-                Padding=new Padding(8),BackColor=background};
-            split.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
-            split.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
-            var panels=new[]{new FlowLayoutPanel{Dock=DockStyle.Fill,FlowDirection=FlowDirection.TopDown,
-                    WrapContents=false,AutoScroll=true,BackColor=background},
-                new FlowLayoutPanel{Dock=DockStyle.Fill,FlowDirection=FlowDirection.TopDown,
-                    WrapContents=false,AutoScroll=true,BackColor=background}};
-            split.Controls.Add(panels[0],0,0);split.Controls.Add(panels[1],1,0);
-            window.Controls.Add(split);window.Controls.Add(header);
+            var compare=new Form{Text="Blightfall Pops — Compare players",Size=new Size(1050,680),
+                StartPosition=FormStartPosition.CenterParent,BackColor=background,ForeColor=Color.White,
+                MinimumSize=new Size(650,380)};
+            var toolbar=new FlowLayoutPanel{Dock=DockStyle.Top,Height=42,Padding=new Padding(8,6,0,0),
+                BackColor=Color.FromArgb(30,33,37),WrapContents=false};
+            var leftChoice=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Width=260};
+            var rightChoice=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,Width=260};
+            var keys=new List<string>(identities.Keys);keys.Sort(delegate(string a,string b){
+                return String.Compare(identities[a],identities[b],StringComparison.OrdinalIgnoreCase);
+            });
+            foreach(var key in keys){leftChoice.Items.Add(identities[key]+" ["+key+"]");
+                rightChoice.Items.Add(identities[key]+" ["+key+"]");}
+            leftChoice.SelectedIndex=0;rightChoice.SelectedIndex=1;
+            toolbar.Controls.Add(new Label{Text="Left",AutoSize=true,ForeColor=dim,Padding=new Padding(0,5,0,0)});
+            toolbar.Controls.Add(leftChoice);
+            toolbar.Controls.Add(new Label{Text="Right",AutoSize=true,ForeColor=dim,Padding=new Padding(10,5,0,0)});
+            toolbar.Controls.Add(rightChoice);
+            var columns=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,RowCount=1,
+                BackColor=background,Padding=new Padding(5)};
+            columns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
+            columns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
+            var leftPanel=new FlowLayoutPanel{Dock=DockStyle.Fill,FlowDirection=FlowDirection.TopDown,
+                WrapContents=false,AutoScroll=true,BackColor=background};
+            var rightPanel=new FlowLayoutPanel{Dock=DockStyle.Fill,FlowDirection=FlowDirection.TopDown,
+                WrapContents=false,AutoScroll=true,BackColor=background};
+            columns.Controls.Add(leftPanel,0,0);columns.Controls.Add(rightPanel,1,0);
+            compare.Controls.Add(columns);compare.Controls.Add(toolbar);
             Action<FlowLayoutPanel,string> populate=delegate(FlowLayoutPanel panel,string guid){
                 panel.SuspendLayout();panel.Controls.Clear();
                 var events=new List<Entry>();
                 foreach(var e in tracker.Entries)if(e.PlayerGuid==guid&&!e.Beast)events.Add(e);
                 events.Sort(delegate(Entry a,Entry b){int t=a.Time.CompareTo(b.Time);
                     return t!=0?t:a.Sequence.CompareTo(b.Sequence);});
-                long dp=0,vp=0;int hits=0;
-                foreach(var e in events){dp+=e.Dread;vp+=e.Virulent;hits+=e.Hits.Count;}
-                int width=Math.Max(290,panel.ClientSize.Width-24);
-                var overview=new Panel{Width=width,Height=82,BackColor=Color.FromArgb(28,33,38),Margin=new Padding(2,2,2,9)};
-                overview.Controls.Add(new Label{Text=identities[guid],ForeColor=green,Font=SizedFont(12,true),
-                    Left=12,Top=8,Width=width-24,Height=26,AutoEllipsis=true});
-                overview.Controls.Add(new Label{Text=events.Count+" BLIGHTFALL CASTS    "+hits+" DAMAGE EVENTS",
-                    ForeColor=dim,Left=12,Top=37,Width=width-24,Height=20});
-                overview.Controls.Add(new Label{Text="DP "+Format(dp)+"     VP "+Format(vp)+"     TOTAL "+Format(dp+vp),
-                    ForeColor=Color.White,Font=LabelFont(true),Left=12,Top=57,Width=width-24,Height=22});
-                panel.Controls.Add(overview);
+                long dread=0,virulent=0;int hits=0;
+                foreach(var e in events){dread+=e.Dread;virulent+=e.Virulent;hits+=e.Hits.Count;}
+                panel.Controls.Add(new Label{Text=identities[guid]+"  •  "+events.Count+" casts  •  "+
+                    Format(dread+virulent)+" damage  •  "+hits+" hits",ForeColor=green,
+                    Font=LabelFont(true),AutoSize=false,Width=460,Height=38,
+                    Padding=new Padding(7,8,0,0)});
+                int index=0;
                 foreach(var e in events){
-                    var card=new Panel{Width=width,Height=104,BackColor=rowColor,Margin=new Padding(2,2,2,6)};
-                    var stripe=new Panel{Left=0,Top=0,Width=3,Height=104,BackColor=green};card.Controls.Add(stripe);
-                    var bf=SpellIcon("BF",10,12,34);card.Controls.Add(bf);
-                    card.Controls.Add(new Label{Text="#"+e.Number+"   "+e.Time.ToString("HH:mm:ss.fff"),
-                        Font=LabelFont(true),ForeColor=Color.White,Left=51,Top=9,Width=210,Height=23});
-                    card.Controls.Add(new Label{Text=Format(e.Dread+e.Virulent),Font=SizedFont(12,true),
-                        ForeColor=green,TextAlign=ContentAlignment.MiddleRight,Anchor=AnchorStyles.Top|AnchorStyles.Right,
-                        Left=Math.Max(250,width-120),Top=8,Width=108,Height=25});
-                    var dpIcon=SpellIcon("DP",52,43,27);card.Controls.Add(dpIcon);
-                    card.Controls.Add(new Label{Text=Format(e.Dread),ForeColor=Color.White,
-                        Font=LabelFont(false),Left=85,Top=45,Width=110,Height=25});
-                    var vpIcon=SpellIcon("VP",Math.Max(205,width/2),43,27);card.Controls.Add(vpIcon);
-                    card.Controls.Add(new Label{Text=Format(e.Virulent),ForeColor=Color.White,
-                        Font=LabelFont(false),Left=Math.Max(238,width/2+33),Top=45,Width=100,Height=25});
-                    int dpHits=0,vpHits=0,crits=0;
-                    foreach(var h in e.Hits){if(h.Kind=="DP")dpHits++;if(h.Kind=="VP")vpHits++;if(h.Crit)crits++;}
-                    var count=new Label{Text=dpHits+" DP hits   •   "+vpHits+" VP hits   •   "+crits+" crits   ▾",
-                        ForeColor=dim,Left=52,Top=76,Width=width-65,Height=22,Cursor=Cursors.Hand};
-                    card.Controls.Add(count);
-                    var details=new FlowLayoutPanel{Left=48,Top=103,Width=width-60,Height=0,
-                        FlowDirection=FlowDirection.TopDown,WrapContents=false,AutoScroll=false,
-                        BackColor=rowColor,Visible=false};
-                    foreach(var hit in e.Hits){
-                        var hitRow=new Panel{Width=width-68,Height=31,Margin=new Padding(0,1,0,1)};
-                        hitRow.Controls.Add(SpellIcon(hit.Kind,0,3,24));
-                        hitRow.Controls.Add(new Label{Text=Format(hit.Amount)+(hit.Crit?"  CRIT":""),
-                            ForeColor=hit.Crit?Color.FromArgb(244,211,91):Color.White,
-                            Left=31,Top=4,Width=125,Height=24});
-                        hitRow.Controls.Add(new Label{Text=hit.Target??"",ForeColor=dim,
-                            Left=160,Top=4,Width=Math.Max(70,width-240),Height=24,AutoEllipsis=true});
-                        details.Controls.Add(hitRow);
-                    }
-                    if(e.Hits.Count==0)details.Controls.Add(new Label{Text="No damage events recorded",
-                        ForeColor=dim,Width=width-65,Height=26});
+                    index++;
+                    var card=new Panel{Width=460,Height=66,BackColor=rowColor,Margin=new Padding(3,2,3,4)};
+                    var title=new Label{Text="#"+index+"  "+e.Time.ToString("HH:mm:ss.fff")+
+                        "  "+(e.Segment??""),ForeColor=Color.White,AutoSize=false,
+                        Location=new Point(9,7),Size=new Size(440,21)};
+                    var summary=new Label{Text="DP "+Format(e.Dread)+"   VP "+Format(e.Virulent)+
+                        "   Total "+Format(e.Dread+e.Virulent)+"   Hits "+e.Hits.Count,
+                        ForeColor=green,Location=new Point(9,33),Size=new Size(440,24)};
+                    card.Controls.Add(title);card.Controls.Add(summary);
+                    var details=new Label{AutoSize=false,Visible=false,ForeColor=dim,
+                        Location=new Point(9,63),Width=440};
+                    var lines=new StringBuilder();
+                    foreach(var hit in e.Hits)lines.AppendLine(hit.Kind+"  "+Format(hit.Amount)+
+                        (hit.Crit?"  CRIT":"")+"  "+(hit.Target??""));
+                    details.Text=lines.Length==0?"No recorded hits":lines.ToString().TrimEnd();
+                    details.Height=Math.Max(24,TextRenderer.MeasureText(details.Text,LabelFont(false),
+                        new Size(430,int.MaxValue),TextFormatFlags.WordBreak).Height+8);
                     card.Controls.Add(details);
-                    Action toggle=delegate{
-                        details.Visible=!details.Visible;
-                        details.Height=details.Visible?Math.Min(160,Math.Max(32,details.Controls.Count*33)):0;
-                        details.AutoScroll=details.Visible&&details.Controls.Count*33>160;
-                        card.Height=details.Visible?details.Bottom+8:104;stripe.Height=card.Height;
-                        count.Text=dpHits+" DP hits   •   "+vpHits+" VP hits   •   "+crits+" crits   "+(details.Visible?"▴":"▾");
-                    };
-                    count.Click+=delegate{toggle();};card.Controls.Add(count);
+                    Action toggle=delegate{details.Visible=!details.Visible;
+                        card.Height=details.Visible?details.Bottom+8:66;};
+                    card.Cursor=Cursors.Hand;title.Cursor=Cursors.Hand;summary.Cursor=Cursors.Hand;
+                    card.Click+=delegate{toggle();};title.Click+=delegate{toggle();};
+                    summary.Click+=delegate{toggle();};
                     panel.Controls.Add(card);
                 }
                 panel.ResumeLayout();
             };
             Action refresh=delegate{
-                if(leftChoice.SelectedIndex>=0)populate(panels[0],keys[leftChoice.SelectedIndex]);
-                if(rightChoice.SelectedIndex>=0)populate(panels[1],keys[rightChoice.SelectedIndex]);
+                if(leftChoice.SelectedIndex>=0)populate(leftPanel,keys[leftChoice.SelectedIndex]);
+                if(rightChoice.SelectedIndex>=0)populate(rightPanel,keys[rightChoice.SelectedIndex]);
             };
             leftChoice.SelectedIndexChanged+=delegate{refresh();};
             rightChoice.SelectedIndexChanged+=delegate{refresh();};
-            split.Resize+=delegate{
-                int width=Math.Max(290,(split.ClientSize.Width-30)/2);
-                foreach(var panel in panels)foreach(Control c in panel.Controls)c.Width=width;
+            columns.Resize+=delegate{
+                int w=Math.Max(250,(columns.ClientSize.Width-35)/2);
+                foreach(Control c in leftPanel.Controls)c.Width=w;
+                foreach(Control c in rightPanel.Controls)c.Width=w;
             };
-            leftChoice.SelectedIndex=0;rightChoice.SelectedIndex=1;
-            window.Show(this);
+            refresh();
+            compare.Show(this);
         }
         private void ShowPlayerMenu(){
             var menu=new ContextMenuStrip{BackColor=Color.FromArgb(30,33,37),ForeColor=Color.White,ShowImageMargin=false};
@@ -650,6 +627,10 @@ namespace BlightfallPopsDesktop {
                 };
                 menu.Items.Add(item);
             }
+            menu.Items.Add(new ToolStripSeparator());
+            var compareItem=new ToolStripMenuItem("Compare two players...");
+            compareItem.Click+=delegate{ShowCompareWindow();};
+            menu.Items.Add(compareItem);
             menu.Items.Add(new ToolStripSeparator());
             var select=new ToolStripMenuItem("Select player ("+tracker.GetPlayers().Count+")");
             foreach(var player in tracker.GetPlayers()){
@@ -675,12 +656,7 @@ namespace BlightfallPopsDesktop {
             button.Paint+=delegate(object sender,PaintEventArgs e){
                 e.Graphics.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                 using(var pen=new Pen(kind=="close"?red:kind=="details"&&!ShowMiniCards?green:dim,2.2f)){
-                    if(kind=="compare"){
-                        e.Graphics.DrawRectangle(pen,4,6,10,18);
-                        e.Graphics.DrawRectangle(pen,17,6,10,18);
-                        e.Graphics.DrawLine(pen,9,10,9,20);
-                        e.Graphics.DrawLine(pen,22,10,22,20);
-                    }else if(kind=="folder"){
+                    if(kind=="folder"){
                         e.Graphics.DrawLines(pen,new[]{new Point(5,9),new Point(11,9),new Point(13,11),new Point(25,11),new Point(25,23),new Point(5,23),new Point(5,9)});
                         e.Graphics.DrawLine(pen,6,14,24,14);
                     }else if(kind=="scan"){
