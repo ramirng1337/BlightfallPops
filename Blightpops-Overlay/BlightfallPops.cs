@@ -91,6 +91,11 @@ namespace BlightfallPopsDesktop {
         public event Action Changed;
         public string Player="", Guid="", Segment="";
         public int WindowMs=1200;
+        // Opt-in: record Blightfall casts from all players without merging their hit windows.
+        public bool TrackAllPlayers=false;
+        private readonly Dictionary<string,Entry> otherPending=new Dictionary<string,Entry>(StringComparer.Ordinal);
+        private readonly Dictionary<string,Entry> otherRecent=new Dictionary<string,Entry>(StringComparer.Ordinal);
+        private readonly Dictionary<string,int> otherCastNumbers=new Dictionary<string,int>(StringComparer.Ordinal);
         public long Position;
         public DateTime LastWrite=DateTime.MinValue;
         public bool SkipFirstLine;
@@ -109,13 +114,23 @@ namespace BlightfallPopsDesktop {
         private static readonly string[] logDates={"M/d/yyyy HH:mm:ss.FFFFFFF","d.M.yyyy HH:mm:ss.FFFFFFF"};
         private void Notify(){if(Changed!=null)Changed();}
         public void Reset(long at=0) {
-            Entries.Clear();Players.Clear();pending=null;recentBlightfall=null;recentBeast=null;beasts.Clear();attempts.Clear();scythe.Clear();soulReaper.Clear();
+            Entries.Clear();Players.Clear();otherPending.Clear();otherRecent.Clear();otherCastNumbers.Clear();pending=null;recentBlightfall=null;recentBeast=null;beasts.Clear();attempts.Clear();scythe.Clear();soulReaper.Clear();
             castNumber=beastNumber=pullNumber=0;nextSequence=0;Guid=Player=Segment=encounter=remainder="";
             logDecoder.Reset();lastOwnCombat=DateTime.MinValue;Position=at;SkipFirstLine=at>0;Notify();
         }
         public void Finish() {
-            if(pending==null)return;
-            pending.Number=++castNumber;Entries.Add(pending);recentBlightfall=pending;pending=null;Notify();
+            bool changed=false;
+            if(pending!=null){pending.Number=++castNumber;Entries.Add(pending);recentBlightfall=pending;pending=null;changed=true;}
+            if(TrackAllPlayers){
+                foreach(var pair in otherPending){
+                    int n;otherCastNumbers.TryGetValue(pair.Key,out n);
+                    pair.Value.Number=n+1;otherCastNumbers[pair.Key]=n+1;
+                    Entries.Add(pair.Value);otherRecent[pair.Key]=pair.Value;changed=true;
+                }
+                otherPending.Clear();
+                if(changed)Entries.Sort(delegate(Entry a,Entry b){return a.Sequence.CompareTo(b.Sequence);});
+            }
+            if(changed)Notify();
         }
         public void Tick(string path) {
             if(!File.Exists(path))return;
@@ -144,7 +159,7 @@ namespace BlightfallPopsDesktop {
                 }
             }
             LastWrite=file.LastWriteTime;
-            if(Position>=file.Length&&pending!=null && (DateTime.Now-file.LastWriteTime).TotalSeconds>2.5)Finish();
+            if(Position>=file.Length&&(pending!=null||(TrackAllPlayers&&otherPending.Count>0)) && (DateTime.Now-file.LastWriteTime).TotalSeconds>2.5)Finish();
         }
         private static List<string> Csv(string text) {
             var result=new List<string>();var field=new StringBuilder();bool quoted=false;
@@ -234,7 +249,25 @@ namespace BlightfallPopsDesktop {
                 }
             }
             if(kind=="SPELL_CAST_SUCCESS"&&spell=="1271967"&&source.StartsWith("Player-")&&OwnFlags(F(f,3))) {
-                if(Guid==""){Guid=source;Player=F(f,2);}if(Guid!=source)return;
+                if(Guid==""){Guid=source;Player=F(f,2);}
+                if(Guid!=source){
+                    if(!TrackAllPlayers)return;
+                    Entry old;
+                    if(otherPending.TryGetValue(source,out old)){
+                        int n;otherCastNumbers.TryGetValue(source,out n);
+                        old.Number=n+1;otherCastNumbers[source]=n+1;
+                        Entries.Add(old);otherRecent[source]=old;
+                    }
+                    int affectedOther=0;Dictionary<string,DateTime> otherEnemies;
+                    if(soulReaper.TryGetValue(source,out otherEnemies))foreach(var target in otherEnemies)
+                        if(target.Value>time)affectedOther++;
+                    bool otherScythe;
+                    otherPending[source]=new Entry{Time=time,Sequence=++nextSequence,Segment=Segment,
+                        Scythe=scythe.TryGetValue(source,out otherScythe)?(bool?)otherScythe:null,
+                        SoulReaper=affectedOther>0,SoulReaperTargets=affectedOther,
+                        PlayerGuid=source,PlayerName=F(f,2)};
+                    Notify();return;
+                }
                 if(recentBeast!=null&&!recentBeast.Exploded&&time>=recentBeast.Time){recentBeast.BlightfallBefore=true;Notify();}
                 Finish();UpdatePull(time);
                 int affected=0;Dictionary<string,DateTime> enemies;
@@ -248,10 +281,12 @@ namespace BlightfallPopsDesktop {
                     Scythe=scythe.TryGetValue(source,out value)?(bool?)value:null,
                     SoulReaper=affected>0,SoulReaperTargets=affected,PlayerGuid=source,PlayerName=F(f,2)};return;
             }
-            if(source!=Guid||(kind!="SPELL_DAMAGE"&&kind!="SPELL_PERIODIC_DAMAGE"))return;
-            // An encounter-end marker may precede the last damage rows in the same
-            // batch. Keep accepting matching hits for that cast's original window.
-            Entry eruption=pending??recentBlightfall;
+            if(kind!="SPELL_DAMAGE"&&kind!="SPELL_PERIODIC_DAMAGE")return;
+            if(source!=Guid&&!TrackAllPlayers)return;
+            // Each player's pending/recent cast is independent: no cross-player eruptions.
+            Entry eruption;
+            if(source==Guid)eruption=pending??recentBlightfall;
+            else if(!otherPending.TryGetValue(source,out eruption))otherRecent.TryGetValue(source,out eruption);
             if(eruption==null)return;
             double ms=(time-eruption.Time).TotalMilliseconds;
             if(ms<0||ms>WindowMs)return;
@@ -259,7 +294,7 @@ namespace BlightfallPopsDesktop {
             long damage=Amount(f);string plague=spell=="1241171"?"DP":"VP";
             if(plague=="DP")eruption.Dread+=damage;else eruption.Virulent+=damage;
             eruption.Hits.Add(new Hit{Kind=plague,Amount=damage,Overkill=Overkill(f),Target=F(f,6),Crit=Crit(f)});
-            if(pending==null)Notify();
+            if(source!=Guid||pending==null)Notify();
         }
     }
     // Separate transparent outline: the real event controls stay at their original size during a drag.
