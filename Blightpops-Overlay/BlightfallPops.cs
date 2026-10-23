@@ -462,8 +462,6 @@ namespace BlightfallPopsDesktop {
             });
             logButton.Paint+=PaintLogButton;
             DrawToolbarIcon(AddAction(actions,"","Options",dim,delegate {ToggleOptions();}),"options");
-            var playerButton=AddAction(actions,"P","Player filter / player list",green,delegate {ShowPlayerMenu();});
-            playerButton.Font=new Font("Segoe UI",11,FontStyle.Bold);
             // Dedicated Compare shortcut in the main toolbar, beside the player filter.
             var compareButton=AddAction(actions,"","Compare two players",dim,delegate {ShowCompareWindow();});
             DrawToolbarIcon(compareButton,"compare");
@@ -479,7 +477,7 @@ namespace BlightfallPopsDesktop {
             scrollTrack.MouseMove+=delegate(object sender,MouseEventArgs e){if(scrollDragging)ScrollFromTrack(e.Y);};
             scrollTrack.MouseUp+=delegate {scrollDragging=false;scrollTrack.Capture=false;};
             scrollTrack.MouseWheel+=ScrollWheel;Controls.Add(scrollTrack);
-            options.Height=205;options.BackColor=Color.FromArgb(30,33,37);options.Visible=false;Controls.Add(options);
+            options.Height=248;options.BackColor=Color.FromArgb(30,33,37);options.Visible=false;Controls.Add(options);
             SetupOptions();
             grip.Size=new Size(18,18);grip.Anchor=AnchorStyles.Right|AnchorStyles.Bottom;
             grip.BackColor=Color.FromArgb(51,55,58);grip.Cursor=Cursors.SizeNWSE;
@@ -630,33 +628,60 @@ namespace BlightfallPopsDesktop {
                 int index=0;
                 foreach(var e in events){
                     index++;
-                    var card=new Panel{Width=width,Height=99,BackColor=rowColor,Margin=new Padding(2,2,2,6),Cursor=Cursors.Hand};
-                    var title=new Label{Text="#"+index+"   "+e.Time.ToString("HH:mm:ss.fff")+"   "+(e.Segment??""),
-                        ForeColor=Color.FromArgb(224,229,230),Font=new Font("Segoe UI",10,FontStyle.Bold),
-                        Bounds=new Rectangle(11,8,width-22,23),AutoEllipsis=true,Cursor=Cursors.Hand};
-                    var damage=new Label{Text="DP  "+Format(e.Dread)+"     VP  "+Format(e.Virulent),
-                        ForeColor=Color.FromArgb(230,234,235),Font=new Font("Segoe UI",11,FontStyle.Bold),
-                        Bounds=new Rectangle(11,35,width-22,26),AutoEllipsis=true,Cursor=Cursors.Hand};
-                    var total=new Label{Text="TOTAL  "+Format(e.Dread+e.Virulent)+"     "+e.Hits.Count+" hits   ▾",
-                        ForeColor=green,Font=new Font("Segoe UI",10,FontStyle.Bold),
-                        Bounds=new Rectangle(11,67,width-22,23),AutoEllipsis=true,Cursor=Cursors.Hand};
-                    card.Controls.AddRange(new Control[]{title,damage,total});
-                    var details=new Panel{Visible=false,BackColor=Color.FromArgb(27,31,36),Location=new Point(7,99),Width=width-14};
-                    int y=6;
+                    // Match the main overlay's compact card: 55px high, BF/DP/VP icons,
+                    // two damage columns, hit counter and right-aligned total.
+                    var card=new Panel{Width=width,Height=55,BackColor=rowColor,
+                        Margin=new Padding(2,2,2,4)};
+                    var accent=new Panel{Bounds=new Rectangle(0,0,3,55),BackColor=green};
+                    card.Controls.Add(accent);
+                    int iconSize=Math.Max(18,Math.Min(23,settings.IconSize));
+                    int secondX=Math.Max(165,width/2-6);
+                    int totalX=Math.Max(secondX+80,width-96);
+                    var bf=SpellIcon("BF",9,9,36);
+                    card.Controls.Add(bf);
+                    var title=Label("#"+index+"  "+e.Time.ToString("HH:mm:ss"),Color.White,52,1,
+                        Math.Max(35,secondX-60),true);
+                    card.Controls.Add(title);
+                    var count=Label(e.Hits.Count+(e.Hits.Count==1?" hit":" hits"),dim,
+                        secondX-3,3,Math.Max(40,totalX-secondX));
+                    card.Controls.Add(count);
+                    var total=Label(Format(e.Dread+e.Virulent),green,totalX,1,
+                        Math.Max(35,width-totalX-8),true);
+                    total.TextAlign=ContentAlignment.TopRight;card.Controls.Add(total);
+                    var dp=SpellIcon("DP",55,29,iconSize);
+                    var vp=SpellIcon("VP",secondX,29,iconSize);
+                    card.Controls.Add(dp);card.Controls.Add(vp);
+                    var dpValue=Label(Format(e.Dread),e.Hits.Exists(h=>h.Kind=="DP"&&h.Crit)?Color.Gold:dim,
+                        55+iconSize+4,28,Math.Max(30,secondX-55-iconSize-8));
+                    var vpValue=Label(Format(e.Virulent),VirulentDamageColor(e),
+                        secondX+iconSize+4,28,Math.Max(30,width-secondX-iconSize-12));
+                    card.Controls.Add(dpValue);card.Controls.Add(vpValue);
+                    var details=new Panel{Visible=false,BackColor=Color.FromArgb(27,31,36),
+                        Location=new Point(5,55),Width=Math.Max(60,width-10)};
+                    int y=5;
                     foreach(var hit in e.Hits){
                         var line=new Label{Text=hit.Kind+"   "+Format(hit.Amount)+(hit.Crit?"   CRIT":"")+"   "+(hit.Target??""),
-                            ForeColor=hit.Crit?Color.FromArgb(255,215,105):Color.FromArgb(204,212,216),
-                            Font=new Font("Segoe UI",10,hit.Crit?FontStyle.Bold:FontStyle.Regular),
-                            Bounds=new Rectangle(8,y,Math.Max(90,width-32),24),AutoEllipsis=true};
-                        details.Controls.Add(line);y+=26;
+                            ForeColor=hit.Crit?Color.Gold:dim,Font=LabelFont(hit.Crit),
+                            Bounds=new Rectangle(8,y,Math.Max(40,width-28),24),AutoEllipsis=true};
+                        details.Controls.Add(line);y+=25;
                     }
-                    if(e.Hits.Count==0){details.Controls.Add(new Label{Text="No recorded hits",ForeColor=dim,
-                        Font=new Font("Segoe UI",10),Bounds=new Rectangle(8,6,width-32,24)});y+=26;}
-                    details.Height=y+6;card.Controls.Add(details);
-                    Action toggle=delegate{details.Visible=!details.Visible;card.Height=details.Visible?99+details.Height+7:99;
-                        total.Text="TOTAL  "+Format(e.Dread+e.Virulent)+"     "+e.Hits.Count+(details.Visible?" hits   ▴":" hits   ▾");
-                        panel.Height=CompareContentHeight(panel);column.UpdateScroll();};
-                    card.Click+=delegate{toggle();};title.Click+=delegate{toggle();};damage.Click+=delegate{toggle();};total.Click+=delegate{toggle();};
+                    if(e.Hits.Count==0){
+                        details.Controls.Add(new Label{Text="No recorded hits",ForeColor=dim,
+                            Font=LabelFont(false),Bounds=new Rectangle(8,5,Math.Max(40,width-28),24)});
+                        y+=25;
+                    }
+                    details.Height=y+5;card.Controls.Add(details);
+                    Action toggle=delegate{
+                        details.Visible=!details.Visible;
+                        card.Height=details.Visible?55+details.Height+4:55;
+                        accent.Height=card.Height;
+                        panel.Height=CompareContentHeight(panel);column.UpdateScroll();
+                    };
+                    bf.Cursor=title.Cursor=count.Cursor=total.Cursor=dp.Cursor=vp.Cursor=dpValue.Cursor=vpValue.Cursor=Cursors.Hand;
+                    bf.Click+=delegate{toggle();};title.Click+=delegate{toggle();};
+                    count.Click+=delegate{toggle();};total.Click+=delegate{toggle();};
+                    dp.Click+=delegate{toggle();};vp.Click+=delegate{toggle();};
+                    dpValue.Click+=delegate{toggle();};vpValue.Click+=delegate{toggle();};
                     panel.Controls.Add(card);
                 }
                 panel.Width=Math.Max(120,column.View.ClientSize.Width-column.Track.Width);
@@ -697,18 +722,18 @@ namespace BlightfallPopsDesktop {
                         TextFormatFlags.NoPrefix|TextFormatFlags.EndEllipsis);
                     int usableWidth=Math.Max(0,size.Width-22);
                     int half=usableWidth/2;
-                    int top=compare.ClientSize.Height>0?toolbar.Height+12:68;
+                    int top=toolbar.Height+12;
                     for(int side=0;side<2;side++){
                         int x=7+side*(half+8);
                         int w=Math.Max(1,half-10);
                         TextRenderer.DrawText(e.Graphics,side==0?"PLAYER 1":"PLAYER 2",LabelFont(true),
                             new Rectangle(x,top,w,23),green,TextFormatFlags.NoPrefix);
                         int y=top+29;
-                        foreach(var height in new[]{77,99,99,99,99}){
+                        foreach(var height in new[]{77,55,55,55,55,55,55}){
                             if(y>=size.Height-8)break;
                             int shown=Math.Min(height,size.Height-y-8);
                             e.Graphics.DrawRectangle(pen,x,y,w,Math.Max(1,shown));
-                            y+=height+8;
+                            y+=height+4;
                         }
                     }
                 }
@@ -911,6 +936,24 @@ namespace BlightfallPopsDesktop {
                 ForeColor=dim,BackColor=Color.FromArgb(42,46,51),FlatStyle=FlatStyle.Flat,TabStop=false};
             updateButton.FlatAppearance.BorderColor=Color.FromArgb(87,91,91);
             updateButton.Click+=delegate {CheckForUpdates(false);};
+            // The player filter lives in Options; the Split View toolbar shortcut remains.
+            var playerFilter=new Button{Text="Player filter: "+settings.PlayerMode+"  ▾",Left=12,Top=211,
+                Width=258,Height=28,ForeColor=Color.White,BackColor=Color.FromArgb(42,46,51),
+                FlatStyle=FlatStyle.Flat,TabStop=false,TextAlign=ContentAlignment.MiddleLeft};
+            playerFilter.FlatAppearance.BorderColor=Color.FromArgb(87,91,91);
+            playerFilter.Click+=delegate{
+                ShowPlayerMenu();
+            };
+            var playerModeRefresh=new Timer{Interval=300};
+            playerModeRefresh.Tick+=delegate{
+                if(!playerFilter.IsDisposed){
+                    string label="Player filter: "+settings.PlayerMode+"  ▾";
+                    if(playerFilter.Text!=label)playerFilter.Text=label;
+                }
+            };
+            playerFilter.Disposed+=delegate{playerModeRefresh.Stop();playerModeRefresh.Dispose();};
+            playerModeRefresh.Start();
+            options.Controls.Add(playerFilter);
             options.Controls.AddRange(new Control[]{time,font,icons,number,grouped,onTop,beastIcon,updateButton,overkill,
                 new Label{Text="Blightfall ms",Left=12,Top=35,Width=115,ForeColor=dim},
                 new Label{Text="Text size",Left=137,Top=35,Width=70,ForeColor=dim},
@@ -934,10 +977,10 @@ namespace BlightfallPopsDesktop {
         private void ToggleOptions(){
             if(options.Visible){
                 options.Visible=false;
-                if(compactHeightBeforeOptions>0&&Height==280)Height=compactHeightBeforeOptions;
+                if(compactHeightBeforeOptions>0&&Height==320)Height=compactHeightBeforeOptions;
                 compactHeightBeforeOptions=0;
             }else{
-                if(Height<280){compactHeightBeforeOptions=Height;Height=280;}
+                if(Height<320){compactHeightBeforeOptions=Height;Height=320;}
                 options.Visible=true;
             }
             LayoutWindow();
@@ -945,7 +988,7 @@ namespace BlightfallPopsDesktop {
         private void ApplyCollapsed(){
             if(settings.Collapsed&&options.Visible){
                 options.Visible=false;
-                if(compactHeightBeforeOptions>0&&Height==280)Height=compactHeightBeforeOptions;
+                if(compactHeightBeforeOptions>0&&Height==320)Height=compactHeightBeforeOptions;
                 compactHeightBeforeOptions=0;
             }
             MinimumSize=new Size(340,settings.Collapsed?70:136);
