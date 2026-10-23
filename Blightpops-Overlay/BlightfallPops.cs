@@ -786,7 +786,7 @@ namespace BlightfallPopsDesktop {
                     activeFields.RowStyles.Add(new RowStyle(SizeType.Absolute,20));
                     activeFields.Controls.Add(label,0,row);
                 }
-                int controlHeight=control is ListBox?94:control is TableLayoutPanel?(Object.ReferenceEquals(control,effectLists)?94:29):control is ComboBox?27:control is Button?29:26;
+                int controlHeight=control is ListBox?94:control is TableLayoutPanel?(control is TableLayoutPanel && control.Controls.Count>2?94:29):control is ComboBox?27:control is Button?29:26;
                 control.Dock=DockStyle.Fill;
                 control.Margin=new Padding(0,0,0,4);
                 int fieldRow=activeFields.RowCount++;
