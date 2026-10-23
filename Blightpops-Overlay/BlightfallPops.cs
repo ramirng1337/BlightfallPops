@@ -691,7 +691,7 @@ namespace BlightfallPopsDesktop {
             form.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
             form.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
             var eventFields=new TableLayoutPanel{AutoSize=true,AutoSizeMode=AutoSizeMode.GrowAndShrink,ColumnCount=1,RowCount=0,Dock=DockStyle.Top,Margin=new Padding(0,0,9,0)};
-            var effectFields=new TableLayoutPanel{AutoSize=true,AutoSizeMode=AutoSizeMode.GrowAndShrink,ColumnCount=1,RowCount=0,Dock=DockStyle.Top,Margin=new Padding(9,0,0,0)};
+            var effectFields=new TableLayoutPanel{AutoSize=true,AutoSizeMode=AutoSizeMode.GrowAndShrink,ColumnCount=1,RowCount=0,Dock=DockStyle.Top,Margin=new Padding(9,24,0,0)};
             eventFields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
             effectFields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
             form.Controls.Add(eventFields,0,0);form.Controls.Add(effectFields,1,0);
