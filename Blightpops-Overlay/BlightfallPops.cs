@@ -571,17 +571,38 @@ namespace BlightfallPopsDesktop {
             foreach(Control control in panel.Controls)height+=control.Height+control.Margin.Vertical;
             return Math.Max(1,height);
         }
+        // Independent, read-only log scan for compare mode; does not change the live overlay.
+        private Tracker ReadCompareLog(string path){
+            var result=new Tracker{TrackAllPlayers=true,WindowMs=settings.WindowMs};
+            long size=new FileInfo(path).Length;
+            while(result.Position<size){
+                long previous=result.Position;
+                result.Tick(path);
+                if(result.Position<=previous)throw new IOException("Unable to read the selected combat log.");
+            }
+            result.Finish();
+            return result;
+        }
+        private static Dictionary<string,string> CompareIdentities(Tracker source){
+            var names=new Dictionary<string,string>(StringComparer.Ordinal);
+            foreach(var player in source.GetPlayers())names[player.Guid]=String.IsNullOrEmpty(player.Name)?player.Guid:player.Name;
+            foreach(var entry in source.Entries)if(!String.IsNullOrEmpty(entry.PlayerGuid)&&!names.ContainsKey(entry.PlayerGuid))
+                names[entry.PlayerGuid]=String.IsNullOrEmpty(entry.PlayerName)?entry.PlayerGuid:entry.PlayerName;
+            return names;
+        }
+        private static List<string> ComparePlayerKeys(Tracker source,Dictionary<string,string> names){
+            var keys=new List<string>();
+            foreach(var entry in source.Entries)if(!entry.Beast&&!keys.Contains(entry.PlayerGuid))keys.Add(entry.PlayerGuid);
+            keys.Sort(delegate(string a,string b){return String.Compare(names[a],names[b],StringComparison.OrdinalIgnoreCase);});
+            return keys;
+        }
         private void ShowCompareWindow(){
-            var identities=new Dictionary<string,string>(StringComparer.Ordinal);
-            foreach(var p in tracker.GetPlayers())identities[p.Guid]=String.IsNullOrEmpty(p.Name)?p.Guid:p.Name;
-            foreach(var entry in tracker.Entries)if(!String.IsNullOrEmpty(entry.PlayerGuid)&&!identities.ContainsKey(entry.PlayerGuid))
-                identities[entry.PlayerGuid]=String.IsNullOrEmpty(entry.PlayerName)?entry.PlayerGuid:entry.PlayerName;
-            if(identities.Count<2){MessageBox.Show(this,"At least two players with tracked events are needed.","Compare players",
-                MessageBoxButtons.OK,MessageBoxIcon.Information);return;}
+            var identities=CompareIdentities(tracker);
+            // A single player can still compare against another combat log.
             var compare=new Form{Text="Blightfall Pops — Compare players",Size=new Size(1120,720),
                 StartPosition=FormStartPosition.CenterParent,BackColor=background,ForeColor=Color.White,
                 MinimumSize=new Size(740,420)};
-            var toolbar=new Panel{Dock=DockStyle.Top,Height=56,BackColor=Color.FromArgb(28,32,37)};
+            var toolbar=new Panel{Dock=DockStyle.Top,Height=91,BackColor=Color.FromArgb(28,32,37)};
             var leftChoice=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,DrawMode=DrawMode.OwnerDrawFixed,
                 ItemHeight=25,Width=290,BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White,
                 Font=new Font("Segoe UI",10,FontStyle.Regular)};
@@ -595,32 +616,63 @@ namespace BlightfallPopsDesktop {
                     Color.FromArgb(235,238,235),TextFormatFlags.Left|TextFormatFlags.VerticalCenter|TextFormatFlags.EndEllipsis);
             };
             leftChoice.DrawItem+=drawChoice;rightChoice.DrawItem+=drawChoice;
-            var keys=new List<string>(identities.Keys);keys.Sort(delegate(string a,string b){return String.Compare(identities[a],identities[b],StringComparison.OrdinalIgnoreCase);});
-            foreach(var key in keys){leftChoice.Items.Add(identities[key]+" ["+key+"]");rightChoice.Items.Add(identities[key]+" ["+key+"]");}
-            leftChoice.SelectedIndex=0;rightChoice.SelectedIndex=1;
+            var mode=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,FlatStyle=FlatStyle.Flat,
+                BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White,Font=new Font("Segoe UI",9)};
+            mode.Items.Add("Two players — same combat log");
+            mode.Items.Add("Two separate combat logs");
+            mode.SelectedIndex=0;
+            var leftFile=new Button{Text="Choose log 1...",FlatStyle=FlatStyle.Flat,BackColor=Color.FromArgb(39,44,51),
+                ForeColor=Color.White,Font=new Font("Segoe UI",9),Visible=false};
+            var rightFile=new Button{Text="Choose log 2...",FlatStyle=FlatStyle.Flat,BackColor=Color.FromArgb(39,44,51),
+                ForeColor=Color.White,Font=new Font("Segoe UI",9),Visible=false};
+            leftFile.FlatAppearance.BorderColor=rightFile.FlatAppearance.BorderColor=Color.FromArgb(70,80,84);
             var leftLabel=new Label{Text="PLAYER 1",ForeColor=dim,Font=new Font("Segoe UI",9,FontStyle.Bold),AutoSize=true};
             var rightLabel=new Label{Text="PLAYER 2",ForeColor=dim,Font=new Font("Segoe UI",9,FontStyle.Bold),AutoSize=true};
-            toolbar.Controls.AddRange(new Control[]{leftLabel,rightLabel,leftChoice,rightChoice});
+            toolbar.Controls.AddRange(new Control[]{leftLabel,rightLabel,leftChoice,rightChoice,mode,leftFile,rightFile});
             Action layoutToolbar=delegate{
                 int half=toolbar.ClientSize.Width/2;
-                leftLabel.Location=new Point(13,6);rightLabel.Location=new Point(half+13,6);
-                leftChoice.SetBounds(12,23,Math.Max(120,half-25),28);
-                rightChoice.SetBounds(half+12,23,Math.Max(120,half-25),28);
+                mode.SetBounds(12,4,Math.Min(270,Math.Max(160,half-25)),25);
+                bool separate=mode.SelectedIndex==1;
+                leftFile.Visible=rightFile.Visible=separate;
+                leftFile.SetBounds(half-143,4,130,25);
+                rightFile.SetBounds(toolbar.ClientSize.Width-143,4,130,25);
+                leftLabel.Location=new Point(13,37);rightLabel.Location=new Point(half+13,37);
+                leftChoice.SetBounds(12,56,Math.Max(120,half-25),28);
+                rightChoice.SetBounds(half+12,56,Math.Max(120,half-25),28);
             };
             toolbar.Resize+=delegate{layoutToolbar();};layoutToolbar();
+            Tracker leftSource=tracker,rightSource=tracker;
+            Dictionary<string,string> leftNames=identities,rightNames=identities;
+            List<string> leftKeys=ComparePlayerKeys(tracker,identities),rightKeys=ComparePlayerKeys(tracker,identities);
+            string leftPath=settings.Log,rightPath=settings.Log;
+            bool changingSelections=false;
+            Action fillChoices=delegate{
+                changingSelections=true;
+                string oldLeft=leftChoice.SelectedIndex>=0&&leftChoice.SelectedIndex<leftKeys.Count?leftKeys[leftChoice.SelectedIndex]:null;
+                string oldRight=rightChoice.SelectedIndex>=0&&rightChoice.SelectedIndex<rightKeys.Count?rightKeys[rightChoice.SelectedIndex]:null;
+                leftKeys=ComparePlayerKeys(leftSource,leftNames);rightKeys=ComparePlayerKeys(rightSource,rightNames);
+                leftChoice.Items.Clear();rightChoice.Items.Clear();
+                foreach(var key in leftKeys)leftChoice.Items.Add(leftNames[key]+" ["+key+"]");
+                foreach(var key in rightKeys)rightChoice.Items.Add(rightNames[key]+" ["+key+"]");
+                if(leftKeys.Count>0)leftChoice.SelectedIndex=Math.Max(0,leftKeys.IndexOf(oldLeft));
+                if(rightKeys.Count>0){int ix=rightKeys.IndexOf(oldRight);
+                    rightChoice.SelectedIndex=ix>=0?ix:(mode.SelectedIndex==0&&rightKeys.Count>1?1:0);}
+                changingSelections=false;
+            };
+            fillChoices();
             var columns=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,RowCount=1,BackColor=background,Padding=new Padding(5)};
             columns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));columns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
             var left=MakeCompareColumn();var right=MakeCompareColumn();
             columns.Controls.Add(left.View,0,0);columns.Controls.Add(right.View,1,0);
             compare.Controls.Add(columns);compare.Controls.Add(toolbar);
-            Action<CompareColumn,string> populate=delegate(CompareColumn column,string guid){
+            Action<CompareColumn,Tracker,Dictionary<string,string>,string> populate=delegate(CompareColumn column,Tracker source,Dictionary<string,string> names,string guid){
                 var panel=column.Content;panel.SuspendLayout();panel.Controls.Clear();column.Offset=0;
-                var events=new List<Entry>();foreach(var e in tracker.Entries)if(e.PlayerGuid==guid&&!e.Beast)events.Add(e);
+                var events=new List<Entry>();foreach(var e in source.Entries)if(e.PlayerGuid==guid&&!e.Beast)events.Add(e);
                 events.Sort(delegate(Entry a,Entry b){int t=a.Time.CompareTo(b.Time);return t!=0?t:a.Sequence.CompareTo(b.Sequence);});
                 long dread=0,virulent=0;int hits=0;foreach(var e in events){dread+=e.Dread;virulent+=e.Virulent;hits+=e.Hits.Count;}
                 int width=Math.Max(150,column.View.ClientSize.Width-column.Track.Width-12);
                 var header=new Panel{Width=width,Height=77,BackColor=Color.FromArgb(28,34,37),Margin=new Padding(2,2,2,8)};
-                header.Controls.Add(new Label{Text=identities[guid],ForeColor=Color.White,Font=new Font("Segoe UI",12,FontStyle.Bold),
+                header.Controls.Add(new Label{Text=names[guid],ForeColor=Color.White,Font=new Font("Segoe UI",12,FontStyle.Bold),
                     Bounds=new Rectangle(12,8,width-24,27),AutoEllipsis=true});
                 header.Controls.Add(new Label{Text=events.Count+" casts    •    "+Format(dread+virulent)+" damage    •    "+hits+" hits",
                     ForeColor=green,Font=new Font("Segoe UI",10,FontStyle.Bold),Bounds=new Rectangle(12,41,width-24,25),AutoEllipsis=true});
@@ -696,9 +748,51 @@ namespace BlightfallPopsDesktop {
                 panel.Width=Math.Max(120,column.View.ClientSize.Width-column.Track.Width);
                 panel.Height=CompareContentHeight(panel);panel.ResumeLayout();column.UpdateScroll();
             };
-            Action refresh=delegate{if(leftChoice.SelectedIndex>=0)populate(left,keys[leftChoice.SelectedIndex]);
-                if(rightChoice.SelectedIndex>=0)populate(right,keys[rightChoice.SelectedIndex]);};
+            Action refresh=delegate{
+                if(changingSelections)return;
+                if(leftChoice.SelectedIndex>=0&&leftChoice.SelectedIndex<leftKeys.Count)
+                    populate(left,leftSource,leftNames,leftKeys[leftChoice.SelectedIndex]);
+                else {left.Content.Controls.Clear();left.Content.Height=1;left.UpdateScroll();}
+                if(rightChoice.SelectedIndex>=0&&rightChoice.SelectedIndex<rightKeys.Count)
+                    populate(right,rightSource,rightNames,rightKeys[rightChoice.SelectedIndex]);
+                else {right.Content.Controls.Clear();right.Content.Height=1;right.UpdateScroll();}
+            };
             leftChoice.SelectedIndexChanged+=delegate{refresh();};rightChoice.SelectedIndexChanged+=delegate{refresh();};
+            mode.SelectedIndexChanged+=delegate{
+                if(mode.SelectedIndex==0){leftSource=rightSource=tracker;
+                    leftNames=rightNames=CompareIdentities(tracker);}
+                else { // Start with the current log on both sides; either side can load a different file.
+                    leftSource=rightSource=tracker;
+                    leftNames=rightNames=CompareIdentities(tracker);
+                }
+                layoutToolbar();fillChoices();refresh();
+            };
+            Action<bool> chooseFile=delegate(bool first){
+                using(var picker=new OpenFileDialog{Title=first?"Choose combat log for player 1":"Choose combat log for player 2",
+                    Filter="Combat logs (*.txt)|*.txt|All files (*.*)|*.*",CheckFileExists=true,
+                    FileName=first?leftPath:rightPath}){
+                    if(picker.ShowDialog(compare)!=DialogResult.OK)return;
+                    string path=picker.FileName;
+                    var button=first?leftFile:rightFile;
+                    button.Enabled=false;button.Text="Loading...";
+                    Task.Run(delegate{return ReadCompareLog(path);}).ContinueWith(task=>{
+                        if(compare.IsDisposed||!compare.IsHandleCreated)return;
+                        try{compare.BeginInvoke((Action)delegate{
+                            if(compare.IsDisposed)return;
+                            button.Enabled=true;button.Text=first?"Choose log 1...":"Choose log 2...";
+                            if(task.IsFaulted||task.IsCanceled){
+                                MessageBox.Show(compare,task.Exception!=null?task.Exception.GetBaseException().Message:"Loading canceled",
+                                    "Unable to read combat log",MessageBoxButtons.OK,MessageBoxIcon.Warning);return;
+                            }
+                            if(first){leftSource=task.Result;leftNames=CompareIdentities(leftSource);leftPath=path;}
+                            else {rightSource=task.Result;rightNames=CompareIdentities(rightSource);rightPath=path;}
+                            fillChoices();refresh();
+                            toolTip.SetToolTip(button,path);
+                        });}catch(InvalidOperationException){}
+                    });
+                }
+            };
+            leftFile.Click+=delegate{chooseFile(true);};rightFile.Click+=delegate{chooseFile(false);};
             compare.Shown+=delegate{refresh();};
             compare.ResizeEnd+=delegate{refresh();};
             // Compact-mode style: draw a dashed, card-sized grid while resizing.
