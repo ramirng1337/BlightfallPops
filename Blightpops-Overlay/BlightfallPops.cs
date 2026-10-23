@@ -601,6 +601,181 @@ namespace BlightfallPopsDesktop {
             keys.Sort(delegate(string a,string b){return String.Compare(names[a],names[b],StringComparison.OrdinalIgnoreCase);});
             return keys;
         }
+        // Editable card definitions are independent of the live Blightfall parser.
+        private sealed class CustomEffect {
+            public string Name="New effect", SpellId="", Type="Buff", IconPath="", Condition="Active at event";
+        }
+        private sealed class CustomCard {
+            public string Name="Custom event", SpellId="", IconPath="";
+            public List<CustomEffect> Effects=new List<CustomEffect>();
+        }
+        private static string CardDefinitionsPath {
+            get { return Path.Combine(Settings.DirectoryPath,"event-cards.json"); }
+        }
+        private static List<CustomCard> ReadCustomCards(){
+            try {
+                if(File.Exists(CardDefinitionsPath)){
+                    var result=new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<List<CustomCard>>(File.ReadAllText(CardDefinitionsPath));
+                    if(result!=null)return result;
+                }
+            }catch{}
+            return new List<CustomCard>();
+        }
+        private static void WriteCustomCards(List<CustomCard> definitions){
+            Directory.CreateDirectory(Settings.DirectoryPath);
+            File.WriteAllText(CardDefinitionsPath,new System.Web.Script.Serialization.JavaScriptSerializer().Serialize(definitions),Encoding.UTF8);
+        }
+        private static Button BuilderButton(string text){
+            var b=new Button{Text=text,Height=30,AutoSize=false,FlatStyle=FlatStyle.Flat,BackColor=Color.FromArgb(45,51,59),ForeColor=Color.White,Font=new Font("Segoe UI",9)};
+            b.FlatAppearance.BorderColor=Color.FromArgb(68,76,85);return b;
+        }
+        private static Label BuilderLabel(string text){return new Label{Text=text,ForeColor=Color.FromArgb(178,183,183),Height=22,AutoSize=false,Font=new Font("Segoe UI",9)};}
+        private static TextBox BuilderText(string value){return new TextBox{Text=value,BorderStyle=BorderStyle.FixedSingle,BackColor=Color.FromArgb(35,40,47),ForeColor=Color.White,Font=new Font("Segoe UI",10),Height=26};}
+        private static Image ReadBuilderImage(string path){
+            try{if(!String.IsNullOrEmpty(path)&&File.Exists(path))using(var loaded=Image.FromFile(path))return new Bitmap(loaded);}catch{}
+            return null;
+        }
+        private void ShowEventCardBuilder(){
+            var definitions=ReadCustomCards();
+            var card=new CustomCard();
+            var editor=new Form{Text="Blightfall Pops — Event Card Builder",Size=new Size(940,700),MinimumSize=new Size(700,480),
+                StartPosition=FormStartPosition.CenterParent,BackColor=background,ForeColor=Color.White,FormBorderStyle=FormBorderStyle.None,ShowIcon=false};
+            var titleBar=new Panel{Dock=DockStyle.Top,Height=33,BackColor=Color.FromArgb(10,11,13)};
+            var heading=new Label{Text="BLIGHTFALL POPS  /  EVENT CARD BUILDER",ForeColor=Color.FromArgb(222,224,218),
+                Font=new Font("Segoe UI",9,FontStyle.Bold),TextAlign=ContentAlignment.MiddleLeft,Dock=DockStyle.Fill};
+            heading.Padding=new Padding(12,0,0,0);
+            var close=BuilderButton("×");close.Width=36;close.Dock=DockStyle.Right;close.BackColor=titleBar.BackColor;close.ForeColor=red;
+            var minimize=BuilderButton("−");minimize.Width=36;minimize.Dock=DockStyle.Right;minimize.BackColor=titleBar.BackColor;
+            close.Click+=delegate{editor.Close();};minimize.Click+=delegate{editor.WindowState=FormWindowState.Minimized;};
+            titleBar.Controls.Add(heading);titleBar.Controls.Add(minimize);titleBar.Controls.Add(close);editor.Controls.Add(titleBar);
+            Point? drag=null;Point origin=Point.Empty;
+            MouseEventHandler down=delegate(object sender,MouseEventArgs e){if(e.Button==MouseButtons.Left){drag=Control.MousePosition;origin=editor.Location;}};
+            MouseEventHandler move=delegate{if(drag.HasValue){Point pt=Control.MousePosition;editor.Location=new Point(origin.X+pt.X-drag.Value.X,origin.Y+pt.Y-drag.Value.Y);}};
+            MouseEventHandler up=delegate{drag=null;};
+            foreach(Control c in new Control[]{titleBar,heading}){c.MouseDown+=down;c.MouseMove+=move;c.MouseUp+=up;}
+            var footer=new Panel{Dock=DockStyle.Bottom,Height=53,BackColor=Color.FromArgb(27,31,36),Padding=new Padding(12,9,12,9)};
+            var save=BuilderButton("Save card");save.Dock=DockStyle.Right;save.Width=130;
+            var statusLabel=new Label{Text="Card definitions are saved locally; live tracking is not changed.",Dock=DockStyle.Fill,
+                TextAlign=ContentAlignment.MiddleLeft,ForeColor=dim,Font=new Font("Segoe UI",9)};
+            footer.Controls.Add(statusLabel);footer.Controls.Add(save);editor.Controls.Add(footer);
+            var split=new SplitContainer{Dock=DockStyle.Fill,SplitterDistance=440,BackColor=background,Panel1MinSize=290,Panel2MinSize=290};
+            editor.Controls.Add(split);split.BringToFront();titleBar.BringToFront();footer.BringToFront();
+            var left=new Panel{Dock=DockStyle.Fill,AutoScroll=true,BackColor=Color.FromArgb(25,29,34),Padding=new Padding(14)};
+            split.Panel1.Controls.Add(left);
+            var form=new TableLayoutPanel{Dock=DockStyle.Top,AutoSize=true,ColumnCount=1,Padding=new Padding(0,0,12,12)};
+            form.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));left.Controls.Add(form);
+            Action<string,Control> addField=delegate(string caption,Control control){
+                var label=BuilderLabel(caption);label.Dock=DockStyle.Top;form.Controls.Add(label);
+                control.Dock=DockStyle.Top;control.Margin=new Padding(0,0,0,12);form.Controls.Add(control);
+            };
+            var presets=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White,Height=29};
+            var name=BuilderText(card.Name);var spell=BuilderText(card.SpellId);
+            var imageButton=BuilderButton("Choose main icon image...");
+            var clearImage=BuilderButton("Use Spell ID / default icon");
+            var addEffect=BuilderButton("+ Add buff / debuff");
+            var effects=new ListBox{Height=125,BackColor=Color.FromArgb(35,40,47),ForeColor=Color.White,BorderStyle=BorderStyle.FixedSingle};
+            var effectName=BuilderText("");var effectSpell=BuilderText("");
+            var effectType=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White};
+            effectType.Items.AddRange(new object[]{"Buff","Debuff"});
+            var condition=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White};
+            condition.Items.AddRange(new object[]{"Active at event","Applied by event","Detected in event window","Removed in event window"});
+            var effectImage=BuilderButton("Choose effect icon image...");var removeEffect=BuilderButton("Remove selected effect");
+            addField("Saved card",presets);addField("Card name",name);addField("Main Spell ID (combat-log ID)",spell);
+            addField("Main icon — optional custom image",imageButton);addField("",clearImage);
+            addField("Linked buffs / debuffs",effects);addField("",addEffect);
+            addField("Selected effect name",effectName);addField("Selected effect Spell ID",effectSpell);
+            addField("Effect type",effectType);addField("Display condition",condition);
+            addField("Effect icon — optional custom image",effectImage);addField("",removeEffect);
+            var right=new Panel{Dock=DockStyle.Fill,Padding=new Padding(14),BackColor=background};split.Panel2.Controls.Add(right);
+            var previewHeading=BuilderLabel("LIVE CARD STRUCTURE PREVIEW");previewHeading.Dock=DockStyle.Top;right.Controls.Add(previewHeading);
+            var preview=new BufferedPanel{Dock=DockStyle.Top,Height=150,BackColor=rowColor};right.Controls.Add(preview);preview.BringToFront();
+            var note=BuilderLabel("Click the image placeholders to import a custom icon.");note.Dock=DockStyle.Top;note.Height=45;
+            right.Controls.Add(note);note.BringToFront();
+            var mainIcon=new PictureBox{Bounds=new Rectangle(12,14,48,48),BackColor=Color.FromArgb(45,51,59),SizeMode=PictureBoxSizeMode.Zoom,Cursor=Cursors.Hand};
+            var mainText=new Label{Bounds=new Rectangle(72,14,300,27),ForeColor=Color.White,Font=new Font("Segoe UI",11,FontStyle.Bold)};
+            var subText=new Label{Bounds=new Rectangle(72,42,300,24),ForeColor=dim,Font=new Font("Segoe UI",9)};
+            var effectPreview=new FlowLayoutPanel{Bounds=new Rectangle(12,78,400,60),BackColor=rowColor,WrapContents=false,AutoScroll=true};
+            preview.Controls.AddRange(new Control[]{mainIcon,mainText,subText,effectPreview});
+            var ownedImages=new List<Image>();
+            Action<Image,PictureBox> setImage=delegate(Image img,PictureBox box){if(img!=null){ownedImages.Add(img);box.Image=img;}else box.Image=null;};
+            Action refresh=delegate{
+                mainText.Text=String.IsNullOrWhiteSpace(name.Text)?"Custom event":name.Text;
+                subText.Text="Spell ID: "+(String.IsNullOrWhiteSpace(spell.Text)?"not assigned":spell.Text);
+                setImage(ReadBuilderImage(card.IconPath),mainIcon);
+                while(effectPreview.Controls.Count>0){Control c=effectPreview.Controls[0];effectPreview.Controls.RemoveAt(0);c.Dispose();}
+                foreach(var effect in card.Effects){
+                    var pic=new PictureBox{Size=new Size(35,35),Margin=new Padding(2),BackColor=Color.FromArgb(45,51,59),SizeMode=PictureBoxSizeMode.Zoom,Cursor=Cursors.Hand};
+                    setImage(ReadBuilderImage(effect.IconPath),pic);
+                    if(pic.Image==null){pic.Paint+=delegate(object sender,PaintEventArgs e){TextRenderer.DrawText(e.Graphics,"+",new Font("Segoe UI",13),pic.ClientRectangle,dim,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);};}
+                    var selectedEffect=effect;pic.Click+=delegate{effects.SelectedIndex=card.Effects.IndexOf(selectedEffect);effectImage.PerformClick();};
+                    new ToolTip().SetToolTip(pic,effect.Name+" ("+effect.Type+", "+effect.SpellId+")");
+                    effectPreview.Controls.Add(pic);
+                }
+            };
+            Action fillEffects=delegate{
+                int previous=effects.SelectedIndex;effects.Items.Clear();
+                foreach(var e in card.Effects)effects.Items.Add(e.Type+": "+e.Name+" ["+e.SpellId+"]");
+                if(effects.Items.Count>0)effects.SelectedIndex=Math.Max(0,Math.Min(previous,effects.Items.Count-1));
+                refresh();
+            };
+            Action fillPresets=delegate{
+                presets.Items.Clear();presets.Items.Add("New card");foreach(var c in definitions)presets.Items.Add(c.Name);
+            };
+            bool loading=false;
+            presets.SelectedIndexChanged+=delegate{
+                if(loading)return;int i=presets.SelectedIndex;
+                card=i>0&&i<=definitions.Count?definitions[i-1]:new CustomCard();
+                loading=true;name.Text=card.Name;spell.Text=card.SpellId;loading=false;fillEffects();
+            };
+            name.TextChanged+=delegate{card.Name=name.Text;refresh();};
+            spell.TextChanged+=delegate{card.SpellId=spell.Text;refresh();};
+            Action<Button,Action<string>> chooseImage=delegate(Button button,Action<string> accept){
+                button.Click+=delegate{using(var dialog=new OpenFileDialog{Filter="Images (*.png;*.jpg;*.jpeg;*.bmp)|*.png;*.jpg;*.jpeg;*.bmp",Title="Select custom icon"}){
+                    if(dialog.ShowDialog(editor)==DialogResult.OK)accept(dialog.FileName);
+                }};
+            };
+            chooseImage(imageButton,delegate(string path){card.IconPath=path;refresh();});
+            clearImage.Click+=delegate{card.IconPath="";refresh();};
+            mainIcon.Click+=delegate{imageButton.PerformClick();};
+            addEffect.Click+=delegate{card.Effects.Add(new CustomEffect());fillEffects();effects.SelectedIndex=card.Effects.Count-1;};
+            effects.SelectedIndexChanged+=delegate{
+                int i=effects.SelectedIndex;bool enabled=i>=0&&i<card.Effects.Count;
+                foreach(Control c in new Control[]{effectName,effectSpell,effectType,condition,effectImage,removeEffect})c.Enabled=enabled;
+                loading=true;
+                effectName.Text=enabled?card.Effects[i].Name:"";effectSpell.Text=enabled?card.Effects[i].SpellId:"";
+                effectType.SelectedItem=enabled?card.Effects[i].Type:null;
+                condition.SelectedItem=enabled?card.Effects[i].Condition:null;
+                loading=false;
+            };
+            effectName.TextChanged+=delegate{if(loading||effects.SelectedIndex<0)return;card.Effects[effects.SelectedIndex].Name=effectName.Text;int i=effects.SelectedIndex;effects.Items[i]=card.Effects[i].Type+": "+effectName.Text+" ["+card.Effects[i].SpellId+"]";refresh();};
+            effectSpell.TextChanged+=delegate{if(loading||effects.SelectedIndex<0)return;card.Effects[effects.SelectedIndex].SpellId=effectSpell.Text;int i=effects.SelectedIndex;effects.Items[i]=card.Effects[i].Type+": "+card.Effects[i].Name+" ["+effectSpell.Text+"]";refresh();};
+            effectType.SelectedIndexChanged+=delegate{if(loading||effects.SelectedIndex<0||effectType.SelectedItem==null)return;card.Effects[effects.SelectedIndex].Type=effectType.SelectedItem.ToString();fillEffects();};
+            condition.SelectedIndexChanged+=delegate{if(!loading&&effects.SelectedIndex>=0&&condition.SelectedItem!=null)card.Effects[effects.SelectedIndex].Condition=condition.SelectedItem.ToString();};
+            chooseImage(effectImage,delegate(string path){if(effects.SelectedIndex>=0){card.Effects[effects.SelectedIndex].IconPath=path;refresh();}});
+            removeEffect.Click+=delegate{if(effects.SelectedIndex>=0){card.Effects.RemoveAt(effects.SelectedIndex);fillEffects();}};
+            save.Click+=delegate{
+                int id; if(!int.TryParse(spell.Text,out id)||id<=0){MessageBox.Show(editor,"Enter a valid numeric main Spell ID.","Event Card Builder",MessageBoxButtons.OK,MessageBoxIcon.Warning);return;}
+                foreach(var effect in card.Effects){int effectId;if(!int.TryParse(effect.SpellId,out effectId)||effectId<=0){MessageBox.Show(editor,"Each linked effect needs a valid numeric Spell ID.","Event Card Builder",MessageBoxButtons.OK,MessageBoxIcon.Warning);return;}}
+                int selected=presets.SelectedIndex;
+                if(selected>0&&selected<=definitions.Count)definitions[selected-1]=card;else definitions.Add(card);
+                try{WriteCustomCards(definitions);fillPresets();presets.SelectedIndex=definitions.IndexOf(card)+1;
+                    statusLabel.Text="Saved to event-cards.json. Tracking integration comes next.";
+                }catch(Exception ex){MessageBox.Show(editor,ex.Message,"Unable to save",MessageBoxButtons.OK,MessageBoxIcon.Error);}
+            };
+            var grip=new Panel{Size=new Size(18,18),Cursor=Cursors.SizeNWSE,BackColor=Color.FromArgb(43,48,52),Anchor=AnchorStyles.Bottom|AnchorStyles.Right};
+            grip.Paint+=delegate(object sender,PaintEventArgs e){using(var pen=new Pen(dim,1.5f)){e.Graphics.DrawLine(pen,5,15,15,5);e.Graphics.DrawLine(pen,10,15,15,10);}};
+            editor.Controls.Add(grip);grip.BringToFront();
+            Action placeGrip=delegate{grip.Location=new Point(editor.ClientSize.Width-19,editor.ClientSize.Height-19);};
+            editor.Resize+=delegate{placeGrip();};placeGrip();
+            Point? resizeAt=null;Size original=Size.Empty;
+            grip.MouseDown+=delegate(object sender,MouseEventArgs e){if(e.Button==MouseButtons.Left){resizeAt=Control.MousePosition;original=editor.Size;}};
+            grip.MouseMove+=delegate{if(resizeAt.HasValue){Point pt=Control.MousePosition;editor.Size=new Size(Math.Max(editor.MinimumSize.Width,original.Width+pt.X-resizeAt.Value.X),Math.Max(editor.MinimumSize.Height,original.Height+pt.Y-resizeAt.Value.Y));}};
+            grip.MouseUp+=delegate{resizeAt=null;};
+            editor.FormClosed+=delegate{foreach(var img in ownedImages)img.Dispose();};
+            fillPresets();presets.SelectedIndex=0;fillEffects();
+            editor.Show(this);
+        }
+
         private void ShowCompareWindow(){
             var identities=CompareIdentities(tracker);
             // A single player can still compare against another combat log.
@@ -963,6 +1138,9 @@ namespace BlightfallPopsDesktop {
             var compareItem=new ToolStripMenuItem("Compare two players...");
             compareItem.Click+=delegate{ShowCompareWindow();};
             menu.Items.Add(compareItem);
+            var builderItem=new ToolStripMenuItem("Event Card Builder...");
+            builderItem.Click+=delegate{ShowEventCardBuilder();};
+            menu.Items.Add(builderItem);
             menu.Items.Add(new ToolStripSeparator());
             var select=new ToolStripMenuItem("Select player ("+tracker.GetPlayers().Count+")");
             foreach(var player in tracker.GetPlayers()){
