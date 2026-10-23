@@ -690,6 +690,7 @@ namespace BlightfallPopsDesktop {
                 Location=new Point(14,12),Padding=new Padding(0,0,6,4),BackColor=left.BackColor};
             form.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
             form.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
+            form.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             var eventFields=new TableLayoutPanel{AutoSize=true,AutoSizeMode=AutoSizeMode.GrowAndShrink,ColumnCount=1,RowCount=0,Dock=DockStyle.Top,Margin=new Padding(0,0,9,0)};
             var effectFields=new TableLayoutPanel{AutoSize=true,AutoSizeMode=AutoSizeMode.GrowAndShrink,ColumnCount=1,RowCount=0,Dock=DockStyle.Top,Margin=new Padding(9,24,0,0)};
             eventFields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
@@ -714,7 +715,11 @@ namespace BlightfallPopsDesktop {
                 int half=Math.Max(145,(w-6)/2);
                 eventFields.Width=half;effectFields.Width=half;
                 eventFields.PerformLayout();effectFields.PerformLayout();
-                form.Height=Math.Max(eventFields.Height,effectFields.Height)+8;
+                // Include the top margin of the effects column; otherwise the last
+                // row is clipped by the parent TableLayoutPanel even when the
+                // outer window has plenty of unused space.
+                form.Height=Math.Max(eventFields.PreferredSize.Height+eventFields.Margin.Vertical,
+                    effectFields.PreferredSize.Height+effectFields.Margin.Vertical)+form.Padding.Vertical+8;
                 form.PerformLayout();
                 updateLeftScroll();
             };
