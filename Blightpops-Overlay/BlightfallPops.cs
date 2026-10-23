@@ -2174,7 +2174,11 @@ namespace BlightfallPopsDesktop {
             // otherwise leave stale child pixels while moving controls during scrolling.
             cards.SuspendLayout();
             try{
+                var activeCards=new HashSet<Control>();
+                foreach(var state in visibleCards)activeCards.Add(state.Card);
+                foreach(var header in playerHeaders.Values)if(header.Tag is int)activeCards.Add(header);
                 foreach(Control control in cards.Controls){
+                    if(!activeCards.Contains(control)){control.Visible=false;continue;}
                     if(!(control.Tag is int))continue;
                     int top=(int)control.Tag-scrollPixels;
                     bool inView=top+control.Height>=-4&&top<=cards.ClientSize.Height+4;
@@ -2713,7 +2717,7 @@ namespace BlightfallPopsDesktop {
             var stale=new List<Entry>();foreach(var entry in cardCache.Keys)if(!live.Contains(entry))stale.Add(entry);
             foreach(var entry in stale){var state=cardCache[entry];cards.Controls.Remove(state.Card);state.Card.Dispose();cardCache.Remove(entry);}
             foreach(var state in cardCache.Values)if(!PlayerVisible(state.Entry)||state.Entry.Beast&&!settings.ShowBeasts)state.Card.Visible=false;
-            foreach(var header in playerHeaders.Values)header.Visible=false;
+            foreach(var header in playerHeaders.Values){header.Visible=false;header.Tag=null;}
             visibleCards.Clear();
             int y=3;
             var ordered=new List<Entry>(tracker.Entries);
@@ -2745,13 +2749,13 @@ namespace BlightfallPopsDesktop {
                     }
                     bool open; if(!playerExpanded.TryGetValue(groupKey,out open))open=true;
                     CombatPlayer known;string playerName=tracker.Players.TryGetValue(groupKey,out known)?known.Name:entry.PlayerName;
-                    header.Width=Math.Max(260,cards.ClientSize.Width-7);header.Left=3;header.Top=y-oldScroll;
+                    header.Width=Math.Max(260,cards.ClientSize.Width-7);header.Left=3;header.Tag=y;header.Top=y-oldScroll;
                     header.Controls.Clear();
                     var nameLabel=new Label{Text=(open?"▾  ":"▸  ")+(String.IsNullOrEmpty(playerName)?groupKey:playerName),
                         ForeColor=Color.White,Font=LabelFont(true),AutoEllipsis=true,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,
                         Padding=new Padding(9,0,0,0),Cursor=Cursors.Hand};
                     nameLabel.Click+=delegate {bool expanded;playerExpanded.TryGetValue(groupKey,out expanded);playerExpanded[groupKey]=!expanded;RefreshCards();};
-                    header.Controls.Add(nameLabel);header.Visible=true;y+=header.Height+5;
+                    header.Controls.Add(nameLabel);header.Visible=y+header.Height>=oldScroll-4&&y<=oldScroll+cards.ClientSize.Height+4;y+=header.Height+5;
                 }
                 if(settings.PlayerMode=="All Players"){
                     bool expanded;if(playerExpanded.TryGetValue(entry.PlayerGuid??"unknown",out expanded)&&!expanded){
@@ -2765,7 +2769,7 @@ namespace BlightfallPopsDesktop {
                     state=new CardState{Entry=entry,Card=new BufferedPanel{Left=3,Width=width,BackColor=rowColor}};
                     cardCache.Add(entry,state);state.Card.MouseWheel+=ScrollWheel;cards.Controls.Add(state.Card);
                 }
-                var card=state.Card;visibleCards.Add(state);card.Visible=true;card.Tag=y;card.Top=y-oldScroll;
+                var card=state.Card;visibleCards.Add(state);card.Tag=y;card.Top=y-oldScroll;card.Visible=y+Math.Max(card.Height,PreviewEventHeight(entry,width,ShowMiniCards))>=oldScroll-4&&y<=oldScroll+cards.ClientSize.Height+4;
                 if(state.Signature==signature){y+=card.Height+(ShowMiniCards?4:5);continue;}
                 int predictedHeight=PreviewEventHeight(entry,width,ShowMiniCards);
                 if(y+predictedHeight<oldScroll-80||y>oldScroll+cards.ClientSize.Height+80){
