@@ -786,7 +786,7 @@ namespace BlightfallPopsDesktop {
                     activeFields.RowStyles.Add(new RowStyle(SizeType.Absolute,20));
                     activeFields.Controls.Add(label,0,row);
                 }
-                int controlHeight=control is ListBox||control is TableLayoutPanel?94:control is ComboBox?27:control is Button?29:26;
+                int controlHeight=control is ListBox?94:control is TableLayoutPanel?(Object.ReferenceEquals(control,effectLists)?94:29):control is ComboBox?27:control is Button?29:26;
                 control.Dock=DockStyle.Fill;
                 control.Margin=new Padding(0,0,0,4);
                 int fieldRow=activeFields.RowCount++;
@@ -797,7 +797,14 @@ namespace BlightfallPopsDesktop {
             var name=BuilderText(card.Name);var spell=BuilderText(card.SpellId);
             var imageButton=BuilderButton("Choose main icon image...");
             var clearImage=BuilderButton("Use Spell ID / default icon");
-            var addEffect=BuilderButton("+ Add buff / debuff");
+            var addBuff=BuilderButton("+ Add Buff");
+            var addDebuff=BuilderButton("+ Add Debuff");
+            var addButtons=new TableLayoutPanel{ColumnCount=2,RowCount=1,Margin=Padding.Empty,Padding=Padding.Empty,BackColor=Color.FromArgb(25,29,34)};
+            addButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
+            addButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
+            addBuff.Dock=DockStyle.Fill;addDebuff.Dock=DockStyle.Fill;
+            addBuff.Margin=new Padding(0,0,3,0);addDebuff.Margin=new Padding(3,0,0,0);
+            addButtons.Controls.Add(addBuff,0,0);addButtons.Controls.Add(addDebuff,1,0);
             // Separate buff/debuff selectors; the hidden master list preserves the
             // existing editing and save logic, including its selected index.
             var effects=new ListBox();
@@ -833,9 +840,9 @@ namespace BlightfallPopsDesktop {
             addField("Saved card",presets);addField("Card name",name);addField("Main Spell ID",spell);
             addField("Main icon",imageButton);addField("",clearImage);
             activeFields=effectFields;
-            addField("Linked buffs / debuffs",effectLists);addField("",addEffect);
+            addField("Linked buffs / debuffs",effectLists);addField("",addButtons);
             addField("Selected effect name",effectName);addField("Selected effect Spell ID",effectSpell);
-            addField("Effect type",effectType);addField("Display condition",condition);
+            addField("Display condition",condition);
             addField("",showCompact);addField("",showDetailed);
             addField("Effect icon — optional custom image",effectImage);addField("",saveEffect);addField("",removeEffect);
             foreach(var fieldColumn in new[]{eventFields,effectFields})
@@ -931,7 +938,17 @@ namespace BlightfallPopsDesktop {
             chooseImage(imageButton,delegate(string path){card.IconPath=path;refresh();});
             clearImage.Click+=delegate{card.IconPath="";refresh();};
             mainIcon.Click+=delegate{imageButton.PerformClick();};
-            addEffect.Click+=delegate{card.Effects.Add(new CustomEffect());fillEffects();effects.SelectedIndex=card.Effects.Count-1;};
+            Action<string> createEffect=delegate(string type){
+                // Save the current field edits in memory, then create a correctly typed effect.
+                var created=new CustomEffect{Type=type,Name=type=="Buff"?"New Buff":"New Debuff",Condition="Active at event",ShowCompact=false,ShowDetailed=true};
+                card.Effects.Add(created);
+                fillEffects();
+                effects.SelectedIndex=card.Effects.Count-1;
+                effectName.Focus();effectName.SelectAll();
+                statusLabel.Text=type+" added to draft. Enter name and Spell ID, then Save selected effect.";
+            };
+            addBuff.Click+=delegate{createEffect("Buff");};
+            addDebuff.Click+=delegate{createEffect("Debuff");};
             effects.SelectedIndexChanged+=delegate{
                 int i=effects.SelectedIndex;bool enabled=i>=0&&i<card.Effects.Count;
                 selectingEffect=true;
