@@ -742,14 +742,14 @@ namespace BlightfallPopsDesktop {
             effectType.Items.AddRange(new object[]{"Buff","Debuff"});
             var condition=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White};
             condition.Items.AddRange(new object[]{"Active at event","Applied by event","Detected in event window","Removed in event window"});
-            var effectImage=BuilderButton("Choose effect icon image...");var removeEffect=BuilderButton("Remove selected effect");
+            var effectImage=BuilderButton("Choose effect icon image...");var saveEffect=BuilderButton("Save selected effect");var removeEffect=BuilderButton("Remove selected effect");
             addField("Saved card",presets);addField("Card name",name);addField("Main Spell ID",spell);
             addField("Main icon",imageButton);addField("",clearImage);
             activeFields=effectFields;
             addField("Linked buffs / debuffs",effects);addField("",addEffect);
             addField("Selected effect name",effectName);addField("Selected effect Spell ID",effectSpell);
             addField("Effect type",effectType);addField("Display condition",condition);
-            addField("Effect icon — optional custom image",effectImage);addField("",removeEffect);
+            addField("Effect icon — optional custom image",effectImage);addField("",saveEffect);addField("",removeEffect);
             foreach(var fieldColumn in new[]{eventFields,effectFields})
                 foreach(Control control in fieldColumn.Controls)if(!(control is ListBox)&&!(control is ComboBox))control.MouseWheel+=leftWheel;
             var right=new Panel{Dock=DockStyle.Fill,Padding=new Padding(14),BackColor=background};split.Panel2.Controls.Add(right);
@@ -836,20 +836,46 @@ namespace BlightfallPopsDesktop {
             addEffect.Click+=delegate{card.Effects.Add(new CustomEffect());fillEffects();effects.SelectedIndex=card.Effects.Count-1;};
             effects.SelectedIndexChanged+=delegate{
                 int i=effects.SelectedIndex;bool enabled=i>=0&&i<card.Effects.Count;
-                foreach(Control c in new Control[]{effectName,effectSpell,effectType,condition,effectImage,removeEffect})c.Enabled=enabled;
+                foreach(Control c in new Control[]{effectName,effectSpell,effectType,condition,effectImage,saveEffect,removeEffect})c.Enabled=enabled;
                 loading=true;
                 effectName.Text=enabled?card.Effects[i].Name:"";effectSpell.Text=enabled?card.Effects[i].SpellId:"";
                 effectType.SelectedItem=enabled?card.Effects[i].Type:null;
                 condition.SelectedItem=enabled?card.Effects[i].Condition:null;
                 loading=false;
             };
-            effectName.TextChanged+=delegate{if(loading||effects.SelectedIndex<0)return;card.Effects[effects.SelectedIndex].Name=effectName.Text;int i=effects.SelectedIndex;effects.Items[i]=card.Effects[i].Type+": "+effectName.Text+" ["+card.Effects[i].SpellId+"]";refresh();};
-            effectSpell.TextChanged+=delegate{if(loading||effects.SelectedIndex<0)return;card.Effects[effects.SelectedIndex].SpellId=effectSpell.Text;int i=effects.SelectedIndex;effects.Items[i]=card.Effects[i].Type+": "+card.Effects[i].Name+" ["+effectSpell.Text+"]";refresh();};
-            effectType.SelectedIndexChanged+=delegate{if(loading||effects.SelectedIndex<0||effectType.SelectedItem==null)return;card.Effects[effects.SelectedIndex].Type=effectType.SelectedItem.ToString();fillEffects();};
-            condition.SelectedIndexChanged+=delegate{if(!loading&&effects.SelectedIndex>=0&&condition.SelectedItem!=null)card.Effects[effects.SelectedIndex].Condition=condition.SelectedItem.ToString();};
-            chooseImage(effectImage,delegate(string path){if(effects.SelectedIndex>=0){card.Effects[effects.SelectedIndex].IconPath=path;refresh();}});
-            removeEffect.Click+=delegate{if(effects.SelectedIndex>=0){card.Effects.RemoveAt(effects.SelectedIndex);fillEffects();}};
+            // Editing only changes the in-memory draft. Never rebuild the list or preview
+            // on every keystroke: that used to cause lag and could disturb text focus.
+            effectName.TextChanged+=delegate{if(!loading&&effects.SelectedIndex>=0)card.Effects[effects.SelectedIndex].Name=effectName.Text;};
+            effectSpell.TextChanged+=delegate{if(!loading&&effects.SelectedIndex>=0)card.Effects[effects.SelectedIndex].SpellId=effectSpell.Text;};
+            effectType.SelectedIndexChanged+=delegate{if(!loading&&effects.SelectedIndex>=0&&effectType.SelectedItem!=null)
+                card.Effects[effects.SelectedIndex].Type=effectType.SelectedItem.ToString();};
+            condition.SelectedIndexChanged+=delegate{if(!loading&&effects.SelectedIndex>=0&&condition.SelectedItem!=null)
+                card.Effects[effects.SelectedIndex].Condition=condition.SelectedItem.ToString();};
+            Action commitEffect=delegate{
+                int i=effects.SelectedIndex;
+                if(i<0||i>=card.Effects.Count)return;
+                var e=card.Effects[i];
+                // Repaint only the changed row without replacing the selected item.
+                effects.BeginUpdate();
+                effects.Items[i]=e.Type+": "+e.Name+" ["+e.SpellId+"]";
+                effects.SelectedIndex=i;
+                effects.EndUpdate();
+                refresh();
+                statusLabel.Text="Effect updated in draft. Click Save card to store it permanently.";
+            };
+            saveEffect.Click+=delegate{commitEffect();};
+            effectName.Leave+=delegate{commitEffect();};
+            effectSpell.Leave+=delegate{commitEffect();};
+            chooseImage(effectImage,delegate(string path){if(effects.SelectedIndex>=0){card.Effects[effects.SelectedIndex].IconPath=path;commitEffect();}});
+            removeEffect.Click+=delegate{
+                int i=effects.SelectedIndex;if(i<0||i>=card.Effects.Count)return;
+                card.Effects.RemoveAt(i);
+                fillEffects();
+                if(card.Effects.Count>0)effects.SelectedIndex=Math.Min(i,card.Effects.Count-1);
+                statusLabel.Text="Effect removed from draft. Click Save card to store the change.";
+            };
             save.Click+=delegate{
+                // Persist the current draft only on explicit Save card.
                 int id; if(!int.TryParse(spell.Text,out id)||id<=0){MessageBox.Show(editor,"Enter a valid numeric main Spell ID.","Event Card Builder",MessageBoxButtons.OK,MessageBoxIcon.Warning);return;}
                 foreach(var effect in card.Effects){int effectId;if(!int.TryParse(effect.SpellId,out effectId)||effectId<=0){MessageBox.Show(editor,"Each linked effect needs a valid numeric Spell ID.","Event Card Builder",MessageBoxButtons.OK,MessageBoxIcon.Warning);return;}}
                 int selected=presets.SelectedIndex;
