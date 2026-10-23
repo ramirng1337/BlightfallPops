@@ -640,6 +640,7 @@ namespace BlightfallPopsDesktop {
         // Editable card definitions are independent of the live Blightfall parser.
         private sealed class CustomEffect {
             public string Name="New effect", SpellId="", Type="Buff", IconPath="", Condition="Active at event";
+            public bool ShowCompact=false, ShowDetailed=true;
         }
         private sealed class CustomCard {
             public string Name="Custom event", SpellId="", IconPath="";
@@ -826,6 +827,8 @@ namespace BlightfallPopsDesktop {
             effectType.Items.AddRange(new object[]{"Buff","Debuff"});
             var condition=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White};
             condition.Items.AddRange(new object[]{"Active at event","Applied by event","Detected in event window","Removed in event window"});
+            var showCompact=new CheckBox{Text="Show in Compact",Checked=false,AutoSize=true,ForeColor=Color.White,BackColor=Color.FromArgb(25,29,34)};
+            var showDetailed=new CheckBox{Text="Show in Detailed",Checked=true,AutoSize=true,ForeColor=Color.White,BackColor=Color.FromArgb(25,29,34)};
             var effectImage=BuilderButton("Choose effect icon image...");var saveEffect=BuilderButton("Save selected effect");var removeEffect=BuilderButton("Remove selected effect");
             addField("Saved card",presets);addField("Card name",name);addField("Main Spell ID",spell);
             addField("Main icon",imageButton);addField("",clearImage);
@@ -833,6 +836,7 @@ namespace BlightfallPopsDesktop {
             addField("Linked buffs / debuffs",effectLists);addField("",addEffect);
             addField("Selected effect name",effectName);addField("Selected effect Spell ID",effectSpell);
             addField("Effect type",effectType);addField("Display condition",condition);
+            addField("",showCompact);addField("",showDetailed);
             addField("Effect icon — optional custom image",effectImage);addField("",saveEffect);addField("",removeEffect);
             foreach(var fieldColumn in new[]{eventFields,effectFields})
                 foreach(Control control in fieldColumn.Controls)if(!(control is ListBox)&&!(control is ComboBox))control.MouseWheel+=leftWheel;
@@ -934,11 +938,13 @@ namespace BlightfallPopsDesktop {
                 buffList.SelectedIndex=buffIndices.IndexOf(i);
                 debuffList.SelectedIndex=debuffIndices.IndexOf(i);
                 selectingEffect=false;
-                foreach(Control c in new Control[]{effectName,effectSpell,effectType,condition,effectImage,saveEffect,removeEffect})c.Enabled=enabled;
+                foreach(Control c in new Control[]{effectName,effectSpell,effectType,condition,effectImage,saveEffect,removeEffect,showCompact,showDetailed})c.Enabled=enabled;
                 loading=true;
                 effectName.Text=enabled?card.Effects[i].Name:"";effectSpell.Text=enabled?card.Effects[i].SpellId:"";
                 effectType.SelectedItem=enabled?card.Effects[i].Type:null;
                 condition.SelectedItem=enabled?card.Effects[i].Condition:null;
+                showCompact.Checked=enabled&&card.Effects[i].ShowCompact;
+                showDetailed.Checked=enabled&&card.Effects[i].ShowDetailed;
                 loading=false;
             };
             // Editing only changes the in-memory draft. Never rebuild the list or preview
@@ -949,6 +955,8 @@ namespace BlightfallPopsDesktop {
                 card.Effects[effects.SelectedIndex].Type=effectType.SelectedItem.ToString();};
             condition.SelectedIndexChanged+=delegate{if(!loading&&effects.SelectedIndex>=0&&condition.SelectedItem!=null)
                 card.Effects[effects.SelectedIndex].Condition=condition.SelectedItem.ToString();};
+            showCompact.CheckedChanged+=delegate{if(!loading&&effects.SelectedIndex>=0)card.Effects[effects.SelectedIndex].ShowCompact=showCompact.Checked;};
+            showDetailed.CheckedChanged+=delegate{if(!loading&&effects.SelectedIndex>=0)card.Effects[effects.SelectedIndex].ShowDetailed=showDetailed.Checked;};
             Action commitEffect=delegate{
                 int i=effects.SelectedIndex;
                 if(i<0||i>=card.Effects.Count)return;
@@ -1772,7 +1780,7 @@ namespace BlightfallPopsDesktop {
         private int PreviewEventHeight(Entry entry,int width,bool mini){
             int top,minimum;
             if(mini){top=57;minimum=55;}
-            else{var geometry=LargeSummaryLayout(entry,width);top=geometry.BaseHeight+2;minimum=geometry.BaseHeight;}
+            else{var geometry=LargeSummaryLayout(entry,width);int extra=DetailedAuraHeight(entry,width,geometry.IconSize);top=geometry.BaseHeight+extra+2;minimum=geometry.BaseHeight+extra;}
             string first=entry.Beast?"CB":"DP";
             foreach(var hit in DisplayHits(entry)){
                 if(!(hit.Kind=="ME"?entry.MOpen&&!mini:hit.Kind==first?entry.DOpen:entry.VOpen))continue;
@@ -2035,17 +2043,63 @@ namespace BlightfallPopsDesktop {
             };
             return box;
         }
-        private void AddCustomAuras(Panel card,Entry entry,int top,int iconSize){
-            if(entry.Beast||entry.AuraSnapshots.Count==0)return;
-            int reserved=(settings.ShowSoulReaper?1:0)+(settings.ShowScythe?1:0);
-            int right=card.Width-8-reserved*(iconSize+3);
+        // Custom aura indicators share one layout area. Detailed view reserves rows below
+        // the damage summary; compact view uses only the free space before status icons.
+        private List<AuraSnapshot> VisibleCustomAuras(Entry entry,bool mini){
+            var result=new List<AuraSnapshot>();
+            if(entry.Beast)return result;
+            var seen=new HashSet<string>(StringComparer.Ordinal);
             foreach(var aura in entry.AuraSnapshots){
-                CustomEffect info;if(customAuraInfo.TryGetValue(aura.SpellId,out info)){
-                    aura.Name=info.Name;aura.IconPath=info.IconPath;
+                CustomEffect info;
+                if(!customAuraInfo.TryGetValue(aura.SpellId,out info))continue;
+                if(mini?!info.ShowCompact:!info.ShowDetailed)continue;
+                if(!seen.Add(aura.SpellId))continue;
+                aura.Name=info.Name;aura.IconPath=info.IconPath;
+                result.Add(aura);
+            }
+            return result;
+        }
+        private int DetailedAuraHeight(Entry entry,int width,int iconSize){
+            var list=VisibleCustomAuras(entry,false);
+            if(list.Count==0)return 0;
+            int usable=Math.Max(1,width-112); // Reserve the left-side label column.
+            int columns=Math.Max(1,usable/(iconSize+4));
+            int buffs=0,debuffs=0;
+            foreach(var aura in list){CustomEffect info;
+                if(customAuraInfo.TryGetValue(aura.SpellId,out info)&&info.Type=="Debuff")debuffs++;
+                else buffs++;
+            }
+            int rows=(buffs+columns-1)/columns+(debuffs+columns-1)/columns;
+            return rows*(iconSize+5)+8;
+        }
+        private void AddDetailedAuras(Panel card,Entry entry,int top,int iconSize){
+            var list=VisibleCustomAuras(entry,false);
+            if(list.Count==0)return;
+            int x0=105,step=iconSize+4,columns=Math.Max(1,(card.Width-x0-9)/step);
+            int y=top+4;
+            foreach(string type in new[]{"Buff","Debuff"}){
+                var group=new List<AuraSnapshot>();
+                foreach(var aura in list){CustomEffect info;
+                    if(customAuraInfo.TryGetValue(aura.SpellId,out info)&&info.Type==type)group.Add(aura);
                 }
-                var box=CustomAuraIcon(aura,right-iconSize,top,iconSize);
-                card.Controls.Add(box);right-=iconSize+3;
-                if(right<card.Width/2)break;
+                if(group.Count==0)continue;
+                var label=Label(type=="Buff"?"Buffs":"Debuffs",dim,9,y+3,90);
+                card.Controls.Add(label);
+                for(int i=0;i<group.Count;i++){
+                    int col=i%columns,row=i/columns;
+                    card.Controls.Add(CustomAuraIcon(group[i],x0+col*step,y+row*(iconSize+5),iconSize));
+                }
+                y+=((group.Count+columns-1)/columns)*(iconSize+5);
+            }
+        }
+        private void AddCompactAuras(Panel card,Entry entry,int top,int iconSize,int leftBound,int rightBound){
+            var list=VisibleCustomAuras(entry,true);
+            int right=rightBound;
+            foreach(var aura in list){
+                int x=right-iconSize;
+                if(x<leftBound)break; // Never draw over damage text.
+                card.Controls.Add(CustomAuraIcon(aura,x,top,iconSize));
+                right=x-3;
             }
         }
         private int AddHitRows(Panel card,Entry entry,string first,int y){
@@ -2178,7 +2232,9 @@ namespace BlightfallPopsDesktop {
                 toolTip.SetToolTip(meleeIcon,"Blood Beast melee — click for hits; excluded from pop total");
                 toolTip.SetToolTip(meleeLabel,"Melee: "+entry.Melee.ToString("N0")+" — excluded from CB + BiL total");
             }
-            ConfigureDetails(card,entry,first,g.BaseHeight+2,g.BaseHeight,firstLabel,secondLabel);
+            int auraHeight=DetailedAuraHeight(entry,card.Width,g.IconSize);
+            if(auraHeight>0)AddDetailedAuras(card,entry,g.BaseHeight,g.IconSize);
+            ConfigureDetails(card,entry,first,g.BaseHeight+auraHeight+2,g.BaseHeight+auraHeight,firstLabel,secondLabel);
         }
         private void RenderMiniCard(Panel card,Entry entry,bool large=false){
             if(large){RenderDetailedCard(card,entry);return;}
@@ -2243,7 +2299,8 @@ namespace BlightfallPopsDesktop {
                 if(entry.Beast||settings.ShowScythe)card.Controls.Add(SpellIcon(entry.Beast?"BF":"SC",statusX+(statusCount-1)*(iconSize+3),damageTop,iconSize,tip,active));
             }
             titleLabel.Height=totalLabel.Height=TextRenderer.MeasureText("Ag",LabelFont(true)).Height+2;
-            AddCustomAuras(card,entry,damageTop,iconSize);
+            int compactAuraLeft=secondX+iconSize+4+TextRenderer.MeasureText(Format(secondValue),SizedFont(settings.TextSize,false)).Width+7;
+            AddCompactAuras(card,entry,damageTop,iconSize,compactAuraLeft,showExtra?statusX-4:card.Width-8);
             ConfigureDetails(card,entry,first,baseHeight+2,baseHeight,firstLabel,secondLabel);
         }
         private void RefreshCards(bool followLatest=false){if(cards.IsDisposed)return;
