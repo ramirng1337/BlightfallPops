@@ -464,6 +464,9 @@ namespace BlightfallPopsDesktop {
             DrawToolbarIcon(AddAction(actions,"","Options",dim,delegate {ToggleOptions();}),"options");
             var playerButton=AddAction(actions,"P","Player filter / player list",green,delegate {ShowPlayerMenu();});
             playerButton.Font=new Font("Segoe UI",11,FontStyle.Bold);
+            // Dedicated Compare shortcut in the main toolbar, beside the player filter.
+            var compareButton=AddAction(actions,"","Compare two players",dim,delegate {ShowCompareWindow();});
+            DrawToolbarIcon(compareButton,"compare");
             // RightToLeft flow places the last added control at the far left.
             miniButton=AddAction(actions,"","Extra details: show or hide pull names and larger events",dim,delegate {
                 settings.MiniCards=!settings.MiniCards;scrollPixels=0;miniButton.Invalidate();RefreshCards();Save();
@@ -663,6 +666,88 @@ namespace BlightfallPopsDesktop {
                 if(rightChoice.SelectedIndex>=0)populate(right,keys[rightChoice.SelectedIndex]);};
             leftChoice.SelectedIndexChanged+=delegate{refresh();};rightChoice.SelectedIndexChanged+=delegate{refresh();};
             compare.Shown+=delegate{refresh();};
+            compare.ResizeEnd+=delegate{refresh();};
+            // Compact-mode style: draw a dashed, card-sized grid while resizing.
+            // Keep the actual controls unchanged until the drag is committed.
+            var compareGrip=new Panel{Size=new Size(18,18),BackColor=Color.FromArgb(43,48,52),
+                Cursor=Cursors.SizeNWSE,Anchor=AnchorStyles.Right|AnchorStyles.Bottom};
+            compareGrip.Paint+=delegate(object sender,PaintEventArgs e){
+                using(var pen=new Pen(dim,1.5f)){
+                    e.Graphics.DrawLine(pen,5,15,15,5);
+                    e.Graphics.DrawLine(pen,10,15,15,10);
+                }
+            };
+            compare.Controls.Add(compareGrip);compareGrip.BringToFront();
+            Action placeGrip=delegate{
+                compareGrip.Location=new Point(compare.ClientSize.Width-19,compare.ClientSize.Height-19);
+                compareGrip.BringToFront();
+            };
+            compare.Resize+=delegate{placeGrip();};placeGrip();
+            Point? compareResizeStart=null;
+            Size compareResizeOrigin=Size.Empty,compareResizeCandidate=Size.Empty;
+            ResizeOutline compareOutline=null;
+            PaintEventHandler paintCompareGrid=delegate(object sender,PaintEventArgs e){
+                var size=compareResizeCandidate;
+                e.Graphics.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                using(var pen=new Pen(green,1.6f)){
+                    pen.DashStyle=System.Drawing.Drawing2D.DashStyle.Dash;
+                    e.Graphics.DrawRectangle(pen,1,1,Math.Max(1,size.Width-3),Math.Max(1,size.Height-3));
+                    TextRenderer.DrawText(e.Graphics,size.Width+" × "+size.Height+" · Compare / Compact grid",
+                        LabelFont(true),new Rectangle(10,8,Math.Max(1,size.Width-20),25),green,
+                        TextFormatFlags.NoPrefix|TextFormatFlags.EndEllipsis);
+                    int usableWidth=Math.Max(0,size.Width-22);
+                    int half=usableWidth/2;
+                    int top=compare.ClientSize.Height>0?toolbar.Height+12:68;
+                    for(int side=0;side<2;side++){
+                        int x=7+side*(half+8);
+                        int w=Math.Max(1,half-10);
+                        TextRenderer.DrawText(e.Graphics,side==0?"PLAYER 1":"PLAYER 2",LabelFont(true),
+                            new Rectangle(x,top,w,23),green,TextFormatFlags.NoPrefix);
+                        int y=top+29;
+                        foreach(var height in new[]{77,99,99,99,99}){
+                            if(y>=size.Height-8)break;
+                            int shown=Math.Min(height,size.Height-y-8);
+                            e.Graphics.DrawRectangle(pen,x,y,w,Math.Max(1,shown));
+                            y+=height+8;
+                        }
+                    }
+                }
+            };
+            Action<bool> endCompareResize=delegate(bool apply){
+                if(!compareResizeStart.HasValue)return;
+                var chosen=compareResizeCandidate;
+                compareResizeStart=null;
+                compareGrip.Capture=false;
+                if(compareOutline!=null){compareOutline.Close();compareOutline.Dispose();compareOutline=null;}
+                if(apply){compare.Size=chosen;refresh();}
+            };
+            compareGrip.MouseDown+=delegate(object sender,MouseEventArgs e){
+                if(e.Button!=MouseButtons.Left||compareResizeStart.HasValue)return;
+                compareResizeStart=Control.MousePosition;
+                compareResizeOrigin=compare.Size;compareResizeCandidate=compare.Size;
+                compareOutline=new ResizeOutline{Bounds=new Rectangle(compare.Location,compareResizeCandidate),
+                    TopMost=compare.TopMost};
+                compareOutline.Paint+=paintCompareGrid;
+                compareOutline.Show(compare);compareGrip.Capture=true;
+            };
+            compareGrip.MouseMove+=delegate{
+                if(!compareResizeStart.HasValue)return;
+                var mouse=Control.MousePosition;
+                compareResizeCandidate=new Size(
+                    Math.Max(compare.MinimumSize.Width,compareResizeOrigin.Width+mouse.X-compareResizeStart.Value.X),
+                    Math.Max(compare.MinimumSize.Height,compareResizeOrigin.Height+mouse.Y-compareResizeStart.Value.Y));
+                if(compareOutline!=null){
+                    compareOutline.Bounds=new Rectangle(compare.Location,compareResizeCandidate);
+                    compareOutline.Invalidate();
+                }
+            };
+            compareGrip.MouseUp+=delegate(object sender,MouseEventArgs e){
+                if(e.Button==MouseButtons.Left)endCompareResize(true);
+            };
+            compareGrip.MouseCaptureChanged+=delegate{
+                if(compareResizeStart.HasValue&&!compareGrip.Capture)endCompareResize(false);
+            };
+            compare.FormClosing+=delegate{endCompareResize(false);};
             compare.Show(this);
         }
         private void ShowPlayerMenu(){
@@ -708,7 +793,11 @@ namespace BlightfallPopsDesktop {
             button.Paint+=delegate(object sender,PaintEventArgs e){
                 e.Graphics.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
                 using(var pen=new Pen(kind=="close"?red:kind=="details"&&!ShowMiniCards?green:dim,2.2f)){
-                    if(kind=="folder"){
+                    if(kind=="compare"){
+                        // Split View: two equal panels with a central divider.
+                        e.Graphics.DrawRectangle(pen,6,7,19,17);
+                        e.Graphics.DrawLine(pen,15,7,15,24);
+                    }else if(kind=="folder"){
                         e.Graphics.DrawLines(pen,new[]{new Point(5,9),new Point(11,9),new Point(13,11),new Point(25,11),new Point(25,23),new Point(5,23),new Point(5,9)});
                         e.Graphics.DrawLine(pen,6,14,24,14);
                     }else if(kind=="scan"){
