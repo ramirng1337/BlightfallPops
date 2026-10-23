@@ -687,7 +687,7 @@ namespace BlightfallPopsDesktop {
             leftTrack.Controls.Add(leftThumb);
             split.Panel1.Controls.Add(left);left.Controls.Add(leftTrack);
             var form=new TableLayoutPanel{AutoSize=false,ColumnCount=2,RowCount=1,
-                Location=new Point(12,8),Padding=new Padding(0,0,6,4),BackColor=left.BackColor};
+                Location=new Point(14,12),Padding=new Padding(0,0,6,4),BackColor=left.BackColor};
             form.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
             form.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
             var eventFields=new TableLayoutPanel{AutoSize=true,AutoSizeMode=AutoSizeMode.GrowAndShrink,ColumnCount=1,RowCount=0,Dock=DockStyle.Top,Margin=new Padding(0,0,9,0)};
@@ -699,13 +699,13 @@ namespace BlightfallPopsDesktop {
             int leftScroll=0;bool thumbDragging=false;int thumbDragY=0,thumbDragOffset=0;
             Action updateLeftScroll=delegate{
                 int viewport=Math.Max(1,left.ClientSize.Height);
-                int extent=Math.Max(0,form.Height+12-viewport);
+                int extent=Math.Max(0,form.Height+20-viewport);
                 leftScroll=Math.Max(0,Math.Min(extent,leftScroll));
-                form.Location=new Point(14,8-leftScroll);
+                form.Location=new Point(14,12-leftScroll);
                 leftTrack.Visible=extent>0;
                 if(extent==0)return;
                 int trackHeight=Math.Max(1,leftTrack.ClientSize.Height);
-                int thumbHeight=Math.Min(trackHeight,Math.Max(28,(int)((long)trackHeight*viewport/Math.Max(viewport,form.Height+12))));
+                int thumbHeight=Math.Min(trackHeight,Math.Max(28,(int)((long)trackHeight*viewport/Math.Max(viewport,form.Height+20))));
                 leftThumb.Bounds=new Rectangle(1,(int)((long)leftScroll*(trackHeight-thumbHeight)/Math.Max(1,extent)),6,thumbHeight);
             };
             Action layoutLeft=delegate{
@@ -723,7 +723,7 @@ namespace BlightfallPopsDesktop {
             left.MouseWheel+=leftWheel;form.MouseWheel+=leftWheel;leftTrack.MouseWheel+=leftWheel;leftThumb.MouseWheel+=leftWheel;
             leftTrack.MouseDown+=delegate(object sender,MouseEventArgs e){if(e.Button==MouseButtons.Left){leftScroll+=(e.Y<leftThumb.Top?-1:1)*Math.Max(60,left.Height-60);updateLeftScroll();}};
             leftThumb.MouseDown+=delegate(object sender,MouseEventArgs e){if(e.Button==MouseButtons.Left){thumbDragging=true;thumbDragY=Cursor.Position.Y;thumbDragOffset=leftScroll;leftThumb.Capture=true;}};
-            leftThumb.MouseMove+=delegate{if(thumbDragging){int extent=Math.Max(0,form.Height+12-left.Height);int travel=Math.Max(1,leftTrack.Height-leftThumb.Height);leftScroll=thumbDragOffset+(Cursor.Position.Y-thumbDragY)*extent/travel;updateLeftScroll();}};
+            leftThumb.MouseMove+=delegate{if(thumbDragging){int extent=Math.Max(0,form.Height+20-left.Height);int travel=Math.Max(1,leftTrack.Height-leftThumb.Height);leftScroll=thumbDragOffset+(Cursor.Position.Y-thumbDragY)*extent/travel;updateLeftScroll();}};
             leftThumb.MouseUp+=delegate{thumbDragging=false;leftThumb.Capture=false;};
             leftThumb.MouseCaptureChanged+=delegate{thumbDragging=false;};
             TableLayoutPanel activeFields=eventFields;
@@ -972,7 +972,15 @@ namespace BlightfallPopsDesktop {
                 split.Panel2MinSize=min;
                 int maximum=Math.Max(min,usable-min);
                 split.SplitterDistance=Math.Max(min,Math.Min((int)(usable*0.59),maximum));
-                layoutLeft();
+                // Reset any scroll offset induced by WinForms initial focus/layout.
+                // Both columns must start below the titlebar, with captions visible.
+                leftScroll=0;
+                updateLeftScroll();
+                editor.BeginInvoke((Action)delegate {
+                    if(editor.IsDisposed)return;
+                    leftScroll=0;
+                    updateLeftScroll();
+                });
             };
             editor.Show(this);
         }
