@@ -637,6 +637,8 @@ namespace BlightfallPopsDesktop {
                     int iconSize=Math.Max(18,Math.Min(23,settings.IconSize));
                     int secondX=Math.Max(165,width/2-6);
                     int totalX=Math.Max(secondX+80,width-96);
+                    int statusCount=(settings.ShowSoulReaper?1:0)+(settings.ShowScythe?1:0);
+                    int statusX=width-9-statusCount*iconSize-Math.Max(0,statusCount-1)*3;
                     var bf=SpellIcon("BF",9,9,36);
                     card.Controls.Add(bf);
                     var title=Label("#"+index+"  "+e.Time.ToString("HH:mm:ss"),Color.White,52,1,
@@ -654,8 +656,15 @@ namespace BlightfallPopsDesktop {
                     var dpValue=Label(Format(e.Dread),e.Hits.Exists(h=>h.Kind=="DP"&&h.Crit)?Color.Gold:dim,
                         55+iconSize+4,28,Math.Max(30,secondX-55-iconSize-8));
                     var vpValue=Label(Format(e.Virulent),VirulentDamageColor(e),
-                        secondX+iconSize+4,28,Math.Max(30,width-secondX-iconSize-12));
+                        secondX+iconSize+4,28,Math.Max(16,(statusCount>0?statusX:width-7)-secondX-iconSize-8));
                     card.Controls.Add(dpValue);card.Controls.Add(vpValue);
+                    // Use the same status icons, activity indicators, and tooltips as main compact cards.
+                    if(settings.ShowSoulReaper)
+                        card.Controls.Add(SpellIcon("SR",statusX,29,iconSize,SoulReaperTip(e),e.SoulReaper));
+                    if(settings.ShowScythe){
+                        string scTip="Festering Scythe: "+(e.Scythe.HasValue?(e.Scythe.Value?"active":"inactive"):"unknown");
+                        card.Controls.Add(SpellIcon("SC",statusX+(statusCount-1)*(iconSize+3),29,iconSize,scTip,e.Scythe));
+                    }
                     var details=new Panel{Visible=false,BackColor=Color.FromArgb(27,31,36),
                         Location=new Point(5,55),Width=Math.Max(60,width-10)};
                     int y=5;
