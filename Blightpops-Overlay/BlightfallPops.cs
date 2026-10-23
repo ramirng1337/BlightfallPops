@@ -776,7 +776,7 @@ namespace BlightfallPopsDesktop {
             right.Controls.Add(preview);right.Controls.Add(previewHeading);
             var cardSurface=new BufferedPanel{BackColor=rowColor,Height=94};preview.Controls.Add(cardSurface);
             var accent=new Panel{BackColor=green,Width=3,Dock=DockStyle.Left};cardSurface.Controls.Add(accent);
-            var mainIcon=new PictureBox{Bounds=new Rectangle(10,12,42,42),BackColor=Color.FromArgb(45,51,59),SizeMode=PictureBoxSizeMode.Zoom,Cursor=Cursors.Hand};
+            var mainIcon=new PictureBox{Bounds=new Rectangle(10,26,42,42),BackColor=Color.FromArgb(45,51,59),SizeMode=PictureBoxSizeMode.Zoom,Cursor=Cursors.Hand};
             var mainText=new Label{ForeColor=Color.White,Font=new Font("Segoe UI",10,FontStyle.Bold),Cursor=Cursors.Hand,AutoEllipsis=true};
             var subText=new Label{ForeColor=dim,Font=new Font("Segoe UI",8),Cursor=Cursors.Hand,AutoEllipsis=true};
             var previewTotal=new Label{Text="1.35M",ForeColor=green,Font=new Font("Segoe UI",10,FontStyle.Bold),TextAlign=ContentAlignment.TopRight,Cursor=Cursors.Hand};
@@ -791,7 +791,9 @@ namespace BlightfallPopsDesktop {
                 subText.SetBounds(61,35,infoWidth,21);
                 previewTotal.SetBounds(Math.Max(105,width-102),10,Math.Min(90,width-110),24);
                 previewHits.SetBounds(Math.Max(105,width-102),35,Math.Min(90,width-110),21);
-                effectPreview.SetBounds(10,60,Math.Max(60,width-20),32);
+                // Keep the primary icon vertically centered in the 94px card, with linked effects to its right.
+                mainIcon.Location=new Point(10,(cardSurface.Height-mainIcon.Height)/2);
+                effectPreview.SetBounds(61,60,Math.Max(40,width-71),32);
             };
             preview.Resize+=delegate{layoutPreview();};layoutPreview();
             // All text and icon regions in the preview are direct editor shortcuts.
