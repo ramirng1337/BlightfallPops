@@ -943,7 +943,8 @@ namespace BlightfallPopsDesktop {
             var clearImage=BuilderButton("Use Spell ID / default icon");
             var addBuff=BuilderButton("+ Add Buff");
             var addDebuff=BuilderButton("+ Add Debuff");
-            var reuseEffect=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White,Height=29};
+            var reuseEffect=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White,Height=29,MaxDropDownItems=8,IntegralHeight=false};
+            var templateSearch=BuilderText("");
             var reuseButton=BuilderButton("+ Add selected template");
             var templateEffects=new List<CustomEffect>();
             var addButtons=new TableLayoutPanel{ColumnCount=2,RowCount=1,Margin=Padding.Empty,Padding=Padding.Empty,BackColor=Color.FromArgb(25,29,34)};
@@ -986,10 +987,11 @@ namespace BlightfallPopsDesktop {
             var effectImage=BuilderButton("Choose effect icon (Asset Library)...");var saveEffect=BuilderButton("Save selected effect");var removeEffect=BuilderButton("Remove selected effect");
             addField("Saved card",presets);addField("Card name",name);addField("Main Spell ID",spell);
             addField("Main icon",imageButton);addField("",clearImage);
+            addField("Find saved effect template",templateSearch);
+            addField("Select saved effect",reuseEffect);addField("",reuseButton);
             activeFields=effectFields;
             addField("Linked buffs / debuffs",effectLists);addField("",addButtons);
-            addField("Reuse effect from saved cards",reuseEffect);addField("",reuseButton);
-            addField("Selected effect name",effectName);addField("Selected effect Spell ID",effectSpell);
+                        addField("Selected effect name",effectName);addField("Selected effect Spell ID",effectSpell);
             addField("Display condition",condition);
             addField("",showCompact);addField("",showDetailed);
             addField("Effect icon — optional custom image",effectImage);addField("",saveEffect);addField("",removeEffect);
@@ -1092,9 +1094,28 @@ namespace BlightfallPopsDesktop {
                 else effects.SelectedIndex=-1;
                 refresh();
             };
-            Action refreshEffectTemplates=delegate{
+            // Keep a full list so searching does not lose templates from saved cards.
+            var allTemplateEffects=new List<CustomEffect>();
+            var allTemplateLabels=new List<string>();
+            Action filterEffectTemplates=delegate{
                 string selectedText=reuseEffect.SelectedItem as string;
+                string query=(templateSearch.Text??"").Trim();
+                reuseEffect.BeginUpdate();
                 reuseEffect.Items.Clear();templateEffects.Clear();
+                for(int i=0;i<allTemplateEffects.Count;i++){
+                    string label=allTemplateLabels[i];
+                    if(query.Length>0 && label.IndexOf(query,StringComparison.OrdinalIgnoreCase)<0)continue;
+                    templateEffects.Add(allTemplateEffects[i]);
+                    reuseEffect.Items.Add(label);
+                }
+                reuseEffect.EndUpdate();
+                int oldIndex=selectedText==null?-1:reuseEffect.Items.IndexOf(selectedText);
+                if(oldIndex>=0)reuseEffect.SelectedIndex=oldIndex;
+                else if(reuseEffect.Items.Count>0)reuseEffect.SelectedIndex=0;
+                else reuseEffect.SelectedIndex=-1;
+            };
+            Action refreshEffectTemplates=delegate{
+                allTemplateEffects.Clear();allTemplateLabels.Clear();
                 var seen=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach(var sourceCard in definitions){
                     if(sourceCard==null||sourceCard.Effects==null)continue;
@@ -1102,14 +1123,13 @@ namespace BlightfallPopsDesktop {
                         if(sourceEffect==null||String.IsNullOrWhiteSpace(sourceEffect.SpellId))continue;
                         string key=(sourceEffect.Type??"")+"|"+sourceEffect.SpellId;
                         if(!seen.Add(key))continue;
-                        templateEffects.Add(CopyEffect(sourceEffect));
-                        reuseEffect.Items.Add(sourceEffect.Type+": "+sourceEffect.Name+" ["+sourceEffect.SpellId+"]");
+                        allTemplateEffects.Add(CopyEffect(sourceEffect));
+                        allTemplateLabels.Add(sourceEffect.Type+": "+sourceEffect.Name+" ["+sourceEffect.SpellId+"]");
                     }
                 }
-                int oldIndex=selectedText==null?-1:reuseEffect.Items.IndexOf(selectedText);
-                if(oldIndex>=0)reuseEffect.SelectedIndex=oldIndex;
-                else if(reuseEffect.Items.Count>0)reuseEffect.SelectedIndex=0;
+                filterEffectTemplates();
             };
+            templateSearch.TextChanged+=delegate{filterEffectTemplates();};
             reuseEffect.DropDown+=delegate{refreshEffectTemplates();};
             reuseButton.Click+=delegate{
                 int selected=reuseEffect.SelectedIndex;
