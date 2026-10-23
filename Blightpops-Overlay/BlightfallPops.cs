@@ -1100,11 +1100,16 @@ namespace BlightfallPopsDesktop {
             Action filterEffectTemplates=delegate{
                 string selectedText=reuseEffect.SelectedItem as string;
                 string query=(templateSearch.Text??"").Trim();
+                // SQL LIKE-style matching: plain text is a case-insensitive substring;
+                // % matches any sequence, _ matches one character.
+                string likePattern=".*"+System.Text.RegularExpressions.Regex.Escape(query)
+                    .Replace(@"\%", ".*").Replace(@"\_", ".")
+                    .Replace("%", ".*").Replace("_", ".")+".*";
                 reuseEffect.BeginUpdate();
                 reuseEffect.Items.Clear();templateEffects.Clear();
                 for(int i=0;i<allTemplateEffects.Count;i++){
                     string label=allTemplateLabels[i];
-                    if(query.Length>0 && label.IndexOf(query,StringComparison.OrdinalIgnoreCase)<0)continue;
+                    if(query.Length>0 && !System.Text.RegularExpressions.Regex.IsMatch(label,likePattern,System.Text.RegularExpressions.RegexOptions.IgnoreCase|System.Text.RegularExpressions.RegexOptions.CultureInvariant))continue;
                     templateEffects.Add(allTemplateEffects[i]);
                     reuseEffect.Items.Add(label);
                 }
