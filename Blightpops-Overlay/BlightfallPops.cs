@@ -1337,7 +1337,7 @@ namespace BlightfallPopsDesktop {
             compare.Show(this);
         }
         private void ShowPlayerMenu(){
-            var menu=new ContextMenuStrip{BackColor=Color.FromArgb(30,33,37),ForeColor=Color.White,ShowImageMargin=true};
+            var menu=new ContextMenuStrip{BackColor=Color.FromArgb(30,33,37),ForeColor=Color.White,ShowImageMargin=false};
             foreach(var mode in new[]{"Myself","Specific Player","All Players"}){
                 string chosen=mode;
                 var item=new ToolStripMenuItem(mode){Checked=settings.PlayerMode==mode};
@@ -1354,11 +1354,6 @@ namespace BlightfallPopsDesktop {
             var compareItem=new ToolStripMenuItem("Compare two players...");
             compareItem.Click+=delegate{ShowCompareWindow();};
             menu.Items.Add(compareItem);
-            var builderItem=new ToolStripMenuItem("Event Card Builder...");
-            builderItem.Image=MakeBuilderMenuIcon();
-            builderItem.ImageScaling=ToolStripItemImageScaling.None;
-            builderItem.Click+=delegate{ShowEventCardBuilder();};
-            menu.Items.Add(builderItem);
             menu.Items.Add(new ToolStripSeparator());
             var select=new ToolStripMenuItem("Select player ("+tracker.GetPlayers().Count+")");
             foreach(var player in tracker.GetPlayers()){
@@ -1524,6 +1519,27 @@ namespace BlightfallPopsDesktop {
                 new Label{Text="Blightfall ms",Left=12,Top=35,Width=115,ForeColor=dim},
                 new Label{Text="Text size",Left=137,Top=35,Width=70,ForeColor=dim},
                 new Label{Text="Icon size",Left=218,Top=35,Width=70,ForeColor=dim}});
+            // Card Builder is a dedicated Options shortcut, not a player-filter menu entry.
+            // Keep the entire control inside the dark options panel and away from the resize grip.
+            var builderButton=new Button{Width=36,Height=36,Top=10,Left=Math.Max(12,options.ClientSize.Width-52),
+                Anchor=AnchorStyles.Top|AnchorStyles.Right,BackColor=options.BackColor,
+                FlatStyle=FlatStyle.Flat,TabStop=false,Cursor=Cursors.Hand};
+            builderButton.FlatAppearance.BorderSize=0;
+            builderButton.FlatAppearance.MouseOverBackColor=Color.FromArgb(49,51,54);
+            builderButton.Paint+=delegate(object sender,PaintEventArgs e){
+                e.Graphics.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                using(var icon=MakeBuilderMenuIcon())
+                    e.Graphics.DrawImage(icon,new Rectangle(5,5,26,26));
+            };
+            builderButton.Click+=delegate{ShowEventCardBuilder();};
+            toolTip.SetToolTip(builderButton,"Open Event Card Builder");
+            options.Controls.Add(builderButton);
+            var builderCaption=new Label{Text="Event Card Builder",AutoSize=false,
+                Width=135,Height=20,Top=19,Left=Math.Max(12,options.ClientSize.Width-194),
+                Anchor=AnchorStyles.Top|AnchorStyles.Right,ForeColor=dim,
+                TextAlign=ContentAlignment.MiddleRight,Font=new Font("Segoe UI",9)};
+            options.Controls.Add(builderCaption);
+            builderButton.BringToFront();
             beastButton=OptionIcon("BB",62,"Blood Beast events",delegate{return settings.ShowBeasts;},delegate{settings.ShowBeasts=!settings.ShowBeasts;});
             OptionIcon("SR",104,"Soul Reaper marker",delegate{return settings.ShowSoulReaper;},delegate{settings.ShowSoulReaper=!settings.ShowSoulReaper;});
             OptionIcon("SC",146,"Festering Scythe marker",delegate{return settings.ShowScythe;},delegate{settings.ShowScythe=!settings.ShowScythe;});
