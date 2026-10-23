@@ -644,6 +644,10 @@ namespace BlightfallPopsDesktop {
         // Independent, read-only log scan for compare mode; does not change the live overlay.
         private Tracker ReadCompareLog(string path){
             var result=new Tracker{TrackAllPlayers=true,WindowMs=settings.WindowMs};
+            // A separate combat log must use the same configured aura spell IDs.
+            // Otherwise its historical hit snapshots cannot contain custom debuffs.
+            foreach(var watched in tracker.WatchedAuras)
+                result.WatchedAuras[watched.Key]=watched.Value;
             long size=new FileInfo(path).Length;
             while(result.Position<size){
                 long previous=result.Position;
@@ -1792,12 +1796,22 @@ namespace BlightfallPopsDesktop {
             compare.Shown+=delegate{refresh();};
             // WinForms raises ResizeEnd after MOVING as well as resizing. Only rebuild when
             // a column actually changes width; height changes merely update scrolling.
-            compare.ResizeEnd+=delegate{
-                int leftWidth=Math.Max(150,left.View.ClientSize.Width-left.Track.Width-12);
-                int rightWidth=Math.Max(150,right.View.ClientSize.Width-right.Track.Width-12);
-                if(leftWidth!=left.RenderWidth||rightWidth!=right.RenderWidth)refresh();
+            // Coalesce repeated width changes into one rebuild after resizing settles.
+            // Keep height-only resizing cheap, and avoid rebuilding while dragging.
+            var compareResizeRefresh=new System.Windows.Forms.Timer{Interval=160};
+            compareResizeRefresh.Tick+=delegate{
+                compareResizeRefresh.Stop();
+                if(compare.IsDisposed)return;
+                int lw=Math.Max(150,left.View.ClientSize.Width-left.Track.Width-12);
+                int rw=Math.Max(150,right.View.ClientSize.Width-right.Track.Width-12);
+                if(lw!=left.RenderWidth||rw!=right.RenderWidth)refresh();
                 else {left.UpdateScroll();right.UpdateScroll();}
             };
+            compare.ResizeEnd+=delegate{
+                compareResizeRefresh.Stop();
+                compareResizeRefresh.Start();
+            };
+            compare.FormClosed+=delegate{compareResizeRefresh.Stop();compareResizeRefresh.Dispose();};
             // Compact-mode style: draw a dashed, card-sized grid while resizing.
             // Keep the actual controls unchanged until the drag is committed.
             var compareGrip=new Panel{Size=new Size(18,18),BackColor=Color.FromArgb(43,48,52),
