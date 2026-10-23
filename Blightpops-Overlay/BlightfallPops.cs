@@ -715,9 +715,10 @@ namespace BlightfallPopsDesktop {
             foreach(Control c in new Control[]{titleBar,heading}){c.MouseDown+=down;c.MouseMove+=move;c.MouseUp+=up;}
             var footer=new Panel{Dock=DockStyle.Bottom,Height=53,BackColor=Color.FromArgb(27,31,36),Padding=new Padding(12,9,52,9)};
             var save=BuilderButton("Save card");save.Dock=DockStyle.Right;save.Width=130;
+            var deleteCard=BuilderButton("Delete card");deleteCard.Dock=DockStyle.Right;deleteCard.Width=120;deleteCard.Margin=new Padding(0,0,10,0);
             var statusLabel=new Label{Text="Card definitions are saved locally; live tracking is not changed.",Dock=DockStyle.Fill,
                 TextAlign=ContentAlignment.MiddleLeft,ForeColor=dim,Font=new Font("Segoe UI",9)};
-            footer.Controls.Add(statusLabel);footer.Controls.Add(save);editor.Controls.Add(footer);
+            footer.Controls.Add(statusLabel);footer.Controls.Add(save);footer.Controls.Add(deleteCard);editor.Controls.Add(footer);
             // SplitContainer starts with zero width before docking/layout. Setting minimums
             // during initialization can throw InvalidOperationException on .NET Framework.
             var split=new SplitContainer{Dock=DockStyle.Fill,BackColor=background};
@@ -972,6 +973,31 @@ namespace BlightfallPopsDesktop {
                 fillEffects();
                 if(card.Effects.Count>0)effects.SelectedIndex=Math.Min(i,card.Effects.Count-1);
                 statusLabel.Text="Effect removed from draft. Click Save card to store the change.";
+            };
+            deleteCard.Click+=delegate{
+                int selected=presets.SelectedIndex;
+                if(selected<=0||selected>definitions.Count){
+                    statusLabel.Text="Select a saved card to delete.";return;
+                }
+                var candidate=definitions[selected-1];
+                // Built-in defaults are generated when the editor opens; deleting them
+                // would only make them reappear next time. Keep them as safe templates.
+                if(candidate.Name=="Blightfall (built-in)"||candidate.Name=="Blood Beast (built-in)"){
+                    MessageBox.Show(editor,"Built-in templates cannot be deleted. You can edit and save them instead.",
+                        "Event Card Builder",MessageBoxButtons.OK,MessageBoxIcon.Information);return;
+                }
+                if(MessageBox.Show(editor,"Permanently delete the card '"+candidate.Name+"'?",
+                    "Delete event card",MessageBoxButtons.YesNo,MessageBoxIcon.Warning,MessageBoxDefaultButton.Button2)!=DialogResult.Yes)return;
+                definitions.RemoveAt(selected-1);
+                try{
+                    WriteCustomCards(definitions);
+                    fillPresets();presets.SelectedIndex=0;
+                    statusLabel.Text="Card deleted. Restart or re-scan before relying on previous aura tracking.";
+                }catch(Exception ex){
+                    definitions.Insert(selected-1,candidate);
+                    MessageBox.Show(editor,ex.Message,"Unable to delete card",MessageBoxButtons.OK,MessageBoxIcon.Error);
+                    fillPresets();presets.SelectedIndex=selected;
+                }
             };
             save.Click+=delegate{
                 // Persist the current draft only on explicit Save card.
