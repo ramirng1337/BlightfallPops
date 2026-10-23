@@ -606,7 +606,7 @@ namespace BlightfallPopsDesktop {
             // A single player can still compare against another combat log.
             var compare=new Form{Text="Blightfall Pops — Compare players",Size=new Size(1120,720),
                 StartPosition=FormStartPosition.CenterParent,BackColor=background,ForeColor=Color.White,
-                MinimumSize=new Size(740,420)};
+                MinimumSize=new Size(740,420),FormBorderStyle=FormBorderStyle.None,ShowIcon=false};
             var toolbar=new Panel{Dock=DockStyle.Top,Height=91,BackColor=Color.FromArgb(28,32,37)};
             var leftChoice=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,DrawMode=DrawMode.OwnerDrawFixed,
                 ItemHeight=25,Width=290,BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White,
@@ -670,6 +670,45 @@ namespace BlightfallPopsDesktop {
             var left=MakeCompareColumn();var right=MakeCompareColumn();
             columns.Controls.Add(left.View,0,0);columns.Controls.Add(right.View,1,0);
             compare.Controls.Add(columns);compare.Controls.Add(toolbar);
+            // Frameless dark title strip, matching the main overlay instead of Windows chrome.
+            var compareTitleBar=new Panel{Dock=DockStyle.Top,Height=32,BackColor=Color.FromArgb(10,11,13)};
+            var compareTitle=new Label{Text="BLIGHTFALL POPS  /  COMPARE",ForeColor=Color.FromArgb(222,224,218),
+                Font=new Font("Segoe UI",9,FontStyle.Bold),AutoSize=false,TextAlign=ContentAlignment.MiddleLeft,
+                Bounds=new Rectangle(12,0,340,32)};
+            var compareClose=new Button{Text="×",Font=new Font("Segoe UI",15),ForeColor=red,
+                BackColor=compareTitleBar.BackColor,FlatStyle=FlatStyle.Flat,Size=new Size(36,30),TabStop=false};
+            var compareMinimize=new Button{Text="−",Font=new Font("Segoe UI",14),ForeColor=dim,
+                BackColor=compareTitleBar.BackColor,FlatStyle=FlatStyle.Flat,Size=new Size(36,30),TabStop=false};
+            compareClose.FlatAppearance.BorderSize=0;
+            compareMinimize.FlatAppearance.BorderSize=0;
+            compareClose.FlatAppearance.MouseOverBackColor=Color.FromArgb(49,51,54);
+            compareMinimize.FlatAppearance.MouseOverBackColor=Color.FromArgb(49,51,54);
+            compareClose.Click+=delegate{compare.Close();};
+            compareMinimize.Click+=delegate{compare.WindowState=FormWindowState.Minimized;};
+            compareTitleBar.Controls.AddRange(new Control[]{compareTitle,compareMinimize,compareClose});
+            Action layoutCompareTitle=delegate{
+                compareClose.Location=new Point(compareTitleBar.ClientSize.Width-37,1);
+                compareMinimize.Location=new Point(compareTitleBar.ClientSize.Width-74,1);
+                compareTitle.Width=Math.Max(80,compareTitleBar.ClientSize.Width-90);
+            };
+            compareTitleBar.Resize+=delegate{layoutCompareTitle();};
+            compare.Controls.Add(compareTitleBar);layoutCompareTitle();
+            Point? compareDragStart=null;
+            Point compareDragOrigin=Point.Empty;
+            MouseEventHandler startCompareDrag=delegate(object sender,MouseEventArgs e){
+                if(e.Button==MouseButtons.Left){compareDragStart=Control.MousePosition;compareDragOrigin=compare.Location;}
+            };
+            MouseEventHandler moveCompareDrag=delegate(object sender,MouseEventArgs e){
+                if(compareDragStart.HasValue){Point now=Control.MousePosition;
+                    compare.Location=new Point(compareDragOrigin.X+now.X-compareDragStart.Value.X,
+                        compareDragOrigin.Y+now.Y-compareDragStart.Value.Y);}
+            };
+            MouseEventHandler stopCompareDrag=delegate{compareDragStart=null;};
+            compareTitleBar.MouseDown+=startCompareDrag;compareTitleBar.MouseMove+=moveCompareDrag;
+            compareTitleBar.MouseUp+=stopCompareDrag;
+            compareTitle.MouseDown+=startCompareDrag;compareTitle.MouseMove+=moveCompareDrag;
+            compareTitle.MouseUp+=stopCompareDrag;
+
             Action<CompareColumn,Tracker,Dictionary<string,string>,string> populate=delegate(CompareColumn column,Tracker source,Dictionary<string,string> names,string guid){
                 var panel=column.Content;
                 int width=Math.Max(150,column.View.ClientSize.Width-column.Track.Width-12);
