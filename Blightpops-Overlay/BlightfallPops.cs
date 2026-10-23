@@ -758,6 +758,39 @@ namespace BlightfallPopsDesktop {
                         search.Text="";reload();
                     }
                 };
+                // Import files dropped from Explorer onto the library or its thumbnail grid.
+                Action<string[]> importDropped=delegate(string[] paths){
+                    int imported=0;
+                    var errors=new System.Collections.Generic.List<string>();
+                    foreach(string path in paths){
+                        try{
+                            if(!File.Exists(path)||!IsSupportedAsset(path))continue;
+                            current=ImportAsset(path);
+                            imported++;
+                        }catch(Exception ex){errors.Add(Path.GetFileName(path)+": "+ex.Message);}
+                    }
+                    if(imported>0){search.Text="";reload();}
+                    if(errors.Count>0)MessageBox.Show(window,String.Join("\n",errors.ToArray()),"Some images could not be imported",MessageBoxButtons.OK,MessageBoxIcon.Warning);
+                };
+                Action<Control> enableDrop=delegate(Control target){
+                    target.AllowDrop=true;
+                    target.DragEnter+=delegate(object sender,DragEventArgs e){
+                        if(!e.Data.GetDataPresent(DataFormats.FileDrop)){e.Effect=DragDropEffects.None;return;}
+                        var paths=e.Data.GetData(DataFormats.FileDrop) as string[];
+                        bool valid=false;
+                        if(paths!=null)foreach(string path in paths)if(File.Exists(path)&&IsSupportedAsset(path)){valid=true;break;}
+                        e.Effect=valid?DragDropEffects.Copy:DragDropEffects.None;
+                    };
+                    target.DragDrop+=delegate(object sender,DragEventArgs e){
+                        if(!e.Data.GetDataPresent(DataFormats.FileDrop))return;
+                        var paths=e.Data.GetData(DataFormats.FileDrop) as string[];
+                        if(paths!=null)importDropped(paths);
+                    };
+                };
+                enableDrop(window);
+                enableDrop(list);
+                enableDrop(top);
+                enableDrop(footer);
                 remove.Click+=delegate{
                     if(list.SelectedItems.Count==0)return;
                     string path=list.SelectedItems[0].Tag as string;
