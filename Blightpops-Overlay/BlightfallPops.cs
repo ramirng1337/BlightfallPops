@@ -2144,18 +2144,33 @@ namespace BlightfallPopsDesktop {
         private void ScrollWheel(object sender,MouseEventArgs e){ScrollTo(scrollPixels-Math.Sign(e.Delta)*Math.Max(28,settings.TextSize*3));}
         private void HookWheel(Control control){control.MouseWheel+=ScrollWheel;foreach(Control child in control.Controls)HookWheel(child);}
         private void ScrollTo(int pixels){
-            scrollPixels=Math.Max(0,Math.Min(pixels,Math.Max(0,totalContentHeight-cards.ClientSize.Height)));
-            foreach(Control control in cards.Controls)if(control.Tag is int)control.Top=(int)control.Tag-scrollPixels;
+            int next=Math.Max(0,Math.Min(pixels,Math.Max(0,totalContentHeight-cards.ClientSize.Height)));
+            bool changed=next!=scrollPixels;
+            scrollPixels=next;
+            // Never leave hundreds of off-screen child controls visible. WinForms can
+            // otherwise leave stale child pixels while moving controls during scrolling.
+            cards.SuspendLayout();
+            try{
+                foreach(Control control in cards.Controls){
+                    if(!(control.Tag is int))continue;
+                    int top=(int)control.Tag-scrollPixels;
+                    bool inView=top+control.Height>=-4&&top<=cards.ClientSize.Height+4;
+                    control.Visible=inView;
+                    if(inView&&control.Top!=top)control.Top=top;
+                }
+            }finally{cards.ResumeLayout(false);}
             scrollTrack.Visible=totalContentHeight>cards.ClientSize.Height;
             scrollTrack.Invalidate();
-            // Build changed off-screen cards only when they enter the viewport.
+            // Build a deferred card only after it enters the visible viewport.
             if(!refreshingCards){
                 int width=Math.Max(260,cards.ClientSize.Width-7);
                 foreach(var state in visibleCards){
-                    if(state.Card.Bottom>=-80&&state.Card.Top<=cards.ClientSize.Height+80&&
-                        state.Signature!=CardSignature(state.Entry,width)){RefreshCards();break;}
+                    if(state.Card.Visible&&state.Signature!=CardSignature(state.Entry,width)){
+                        RefreshCards();break;
+                    }
                 }
             }
+            if(changed)cards.Invalidate(true);
         }
         private void ScrollFromTrack(int y){
             if(scrollTrack.Height<=0)return;
