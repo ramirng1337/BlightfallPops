@@ -527,6 +527,11 @@ namespace BlightfallPopsDesktop {
             public int Offset;
             public bool Dragging;
             public int DragY, DragOffset;
+            public Tracker RenderSource;
+            public string RenderGuid;
+            public int RenderWidth=-1, RenderCount=-1;
+            public long RenderLastSequence=-1;
+            public void InvalidateRender(){RenderSource=null;RenderGuid=null;RenderWidth=-1;RenderCount=-1;RenderLastSequence=-1;}
             public void UpdateScroll(){
                 int maximum=Math.Max(0,Content.Height-View.ClientSize.Height);
                 Offset=Math.Max(0,Math.Min(maximum,Offset));
@@ -666,11 +671,24 @@ namespace BlightfallPopsDesktop {
             columns.Controls.Add(left.View,0,0);columns.Controls.Add(right.View,1,0);
             compare.Controls.Add(columns);compare.Controls.Add(toolbar);
             Action<CompareColumn,Tracker,Dictionary<string,string>,string> populate=delegate(CompareColumn column,Tracker source,Dictionary<string,string> names,string guid){
-                var panel=column.Content;panel.SuspendLayout();panel.Controls.Clear();column.Offset=0;
+                var panel=column.Content;
+                int width=Math.Max(150,column.View.ClientSize.Width-column.Track.Width-12);
+                // Reuse the complete card tree when neither player, data nor column width changed.
+                // Moving the window and height-only resizing never rebuild controls or icons.
+                int eventCount=0;long lastSequence=-1;
+                foreach(var candidate in source.Entries)if(candidate.PlayerGuid==guid&&!candidate.Beast){
+                    eventCount++;if(candidate.Sequence>lastSequence)lastSequence=candidate.Sequence;
+                }
+                if(Object.ReferenceEquals(column.RenderSource,source)&&column.RenderGuid==guid&&
+                    column.RenderWidth==width&&column.RenderCount==eventCount&&
+                    column.RenderLastSequence==lastSequence){column.UpdateScroll();return;}
+                int previousOffset=column.Offset;
+                panel.SuspendLayout();
+                // Clear() only detaches WinForms controls; dispose old cards to avoid leaking handles.
+                while(panel.Controls.Count>0){Control old=panel.Controls[0];panel.Controls.RemoveAt(0);old.Dispose();}
                 var events=new List<Entry>();foreach(var e in source.Entries)if(e.PlayerGuid==guid&&!e.Beast)events.Add(e);
                 events.Sort(delegate(Entry a,Entry b){int t=a.Time.CompareTo(b.Time);return t!=0?t:a.Sequence.CompareTo(b.Sequence);});
                 long dread=0,virulent=0;int hits=0;foreach(var e in events){dread+=e.Dread;virulent+=e.Virulent;hits+=e.Hits.Count;}
-                int width=Math.Max(150,column.View.ClientSize.Width-column.Track.Width-12);
                 var header=new Panel{Width=width,Height=77,BackColor=Color.FromArgb(28,34,37),Margin=new Padding(2,2,2,8)};
                 header.Controls.Add(new Label{Text=names[guid],ForeColor=Color.White,Font=new Font("Segoe UI",12,FontStyle.Bold),
                     Bounds=new Rectangle(12,8,width-24,27),AutoEllipsis=true});
@@ -746,16 +764,19 @@ namespace BlightfallPopsDesktop {
                     panel.Controls.Add(card);
                 }
                 panel.Width=Math.Max(120,column.View.ClientSize.Width-column.Track.Width);
-                panel.Height=CompareContentHeight(panel);panel.ResumeLayout();column.UpdateScroll();
+                panel.Height=CompareContentHeight(panel);panel.ResumeLayout();
+                column.RenderSource=source;column.RenderGuid=guid;column.RenderWidth=width;
+                column.RenderCount=eventCount;column.RenderLastSequence=lastSequence;
+                column.Offset=previousOffset;column.UpdateScroll();
             };
             Action refresh=delegate{
                 if(changingSelections)return;
                 if(leftChoice.SelectedIndex>=0&&leftChoice.SelectedIndex<leftKeys.Count)
                     populate(left,leftSource,leftNames,leftKeys[leftChoice.SelectedIndex]);
-                else {left.Content.Controls.Clear();left.Content.Height=1;left.UpdateScroll();}
+                else {left.InvalidateRender();left.Content.Controls.Clear();left.Content.Height=1;left.UpdateScroll();}
                 if(rightChoice.SelectedIndex>=0&&rightChoice.SelectedIndex<rightKeys.Count)
                     populate(right,rightSource,rightNames,rightKeys[rightChoice.SelectedIndex]);
-                else {right.Content.Controls.Clear();right.Content.Height=1;right.UpdateScroll();}
+                else {right.InvalidateRender();right.Content.Controls.Clear();right.Content.Height=1;right.UpdateScroll();}
             };
             leftChoice.SelectedIndexChanged+=delegate{refresh();};rightChoice.SelectedIndexChanged+=delegate{refresh();};
             mode.SelectedIndexChanged+=delegate{
@@ -794,7 +815,14 @@ namespace BlightfallPopsDesktop {
             };
             leftFile.Click+=delegate{chooseFile(true);};rightFile.Click+=delegate{chooseFile(false);};
             compare.Shown+=delegate{refresh();};
-            compare.ResizeEnd+=delegate{refresh();};
+            // WinForms raises ResizeEnd after MOVING as well as resizing. Only rebuild when
+            // a column actually changes width; height changes merely update scrolling.
+            compare.ResizeEnd+=delegate{
+                int leftWidth=Math.Max(150,left.View.ClientSize.Width-left.Track.Width-12);
+                int rightWidth=Math.Max(150,right.View.ClientSize.Width-right.Track.Width-12);
+                if(leftWidth!=left.RenderWidth||rightWidth!=right.RenderWidth)refresh();
+                else {left.UpdateScroll();right.UpdateScroll();}
+            };
             // Compact-mode style: draw a dashed, card-sized grid while resizing.
             // Keep the actual controls unchanged until the drag is committed.
             var compareGrip=new Panel{Size=new Size(18,18),BackColor=Color.FromArgb(43,48,52),
