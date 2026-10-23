@@ -662,7 +662,7 @@ namespace BlightfallPopsDesktop {
         }
         private static List<string> ComparePlayerKeys(Tracker source,Dictionary<string,string> names){
             var keys=new List<string>();
-            foreach(var entry in source.Entries)if(!entry.Beast&&!keys.Contains(entry.PlayerGuid))keys.Add(entry.PlayerGuid);
+            foreach(var entry in source.Entries)if(!keys.Contains(entry.PlayerGuid))keys.Add(entry.PlayerGuid);
             keys.Sort(delegate(string a,string b){return String.Compare(names[a],names[b],StringComparison.OrdinalIgnoreCase);});
             return keys;
         }
@@ -1416,6 +1416,7 @@ namespace BlightfallPopsDesktop {
             var compareEventsButton=BuilderButton("Event cards: Blightfall");
             compareEventsButton.Width=188;
             bool compareBlightfallEnabled=true;
+            bool compareBeastEnabled=false;
             Action refreshEventSelection=null;
             compareEventsButton.Click+=delegate{
                 using(var chooser=new Form{Text="Compare / Event Card Library",Size=new Size(440,510),
@@ -1454,20 +1455,21 @@ namespace BlightfallPopsDesktop {
                         BorderStyle=BorderStyle.None,Font=new Font("Segoe UI",10)};
                     var footer=new Label{Dock=DockStyle.Bottom,Height=56,
                         ForeColor=Color.FromArgb(180,185,190),
-                        Text="Only Blightfall is supported by the Compare renderer currently.\nOther saved cards are listed for reference.",
+                        Text="Blightfall and Blood Beast are supported.\nOther custom spell trackers are not yet implemented.",
                         Padding=new Padding(8)};
                     var done=BuilderButton("Apply selection");done.Dock=DockStyle.Bottom;
                     var choices=new List<CustomCard>();
                     choices.Add(new CustomCard{Name="Blightfall (built-in)",SpellId="1271974"});
-                    foreach(var saved in ReadCustomCards())if(saved!=null&&saved.SpellId!="1271974")choices.Add(saved);
+                    choices.Add(new CustomCard{Name="Blood Beast (built-in)",SpellId="434237"});
+                    foreach(var saved in ReadCustomCards())if(saved!=null&&saved.SpellId!="1271974"&&saved.SpellId!="434237")choices.Add(saved);
                     Action refill=delegate{
                         list.Items.Clear();
                         foreach(var c in choices){
                             string name=c.Name+" ["+c.SpellId+"]";
                             if(name.IndexOf(search.Text,StringComparison.OrdinalIgnoreCase)<0)continue;
-                            bool supported=c.SpellId=="1271974"||c.SpellId=="1271967";
+                            bool supported=c.SpellId=="1271974"||c.SpellId=="1271967"||c.SpellId=="434237";
                             int ix=list.Items.Add((supported?"":"[Tracker not implemented] ")+name);
-                            if(supported)list.SetItemChecked(ix,compareBlightfallEnabled);
+                            if(supported)list.SetItemChecked(ix,c.SpellId=="434237"?compareBeastEnabled:compareBlightfallEnabled);
                         }
                     };
                     search.TextChanged+=delegate{refill();};refill();
@@ -1476,11 +1478,16 @@ namespace BlightfallPopsDesktop {
                         if(item.StartsWith("[Tracker not implemented] "))args.NewValue=CheckState.Unchecked;
                     };
                     done.Click+=delegate{
-                        bool enabled=false;
-                        for(int i=0;i<list.Items.Count;i++)if(list.GetItemChecked(i)&&
-                            !list.Items[i].ToString().StartsWith("[Tracker not implemented] "))enabled=true;
-                        compareBlightfallEnabled=enabled;
-                        compareEventsButton.Text=enabled?"Event cards: Blightfall":"Event cards: None";
+                        // Keep selections for filtered-out entries when a search is active.
+                        bool bf=compareBlightfallEnabled,bb=compareBeastEnabled;
+                        for(int i=0;i<list.Items.Count;i++){
+                            string item=list.Items[i].ToString();
+                            if(item.StartsWith("[Tracker not implemented] "))continue;
+                            if(item.Contains("[434237]"))bb=list.GetItemChecked(i);
+                            else if(item.Contains("[1271974]")||item.Contains("[1271967]"))bf=list.GetItemChecked(i);
+                        }
+                        compareBlightfallEnabled=bf;compareBeastEnabled=bb;
+                        compareEventsButton.Text="Event cards: "+(bf&&bb?"BF + BB":bf?"Blightfall":bb?"Blood Beast":"None");
                         chooser.Close();
                         if(refreshEventSelection!=null)refreshEventSelection();
                     };
@@ -1568,7 +1575,7 @@ namespace BlightfallPopsDesktop {
                 // Reuse the complete card tree when neither player, data nor column width changed.
                 // Moving the window and height-only resizing never rebuild controls or icons.
                 int eventCount=0;long lastSequence=-1;
-                foreach(var candidate in source.Entries)if(compareBlightfallEnabled&&candidate.PlayerGuid==guid&&!candidate.Beast){
+                foreach(var candidate in source.Entries)if(candidate.PlayerGuid==guid&&((!candidate.Beast&&compareBlightfallEnabled)||(candidate.Beast&&compareBeastEnabled))){
                     eventCount++;if(candidate.Sequence>lastSequence)lastSequence=candidate.Sequence;
                 }
                 if(Object.ReferenceEquals(column.RenderSource,source)&&column.RenderGuid==guid&&
@@ -1578,9 +1585,9 @@ namespace BlightfallPopsDesktop {
                 panel.SuspendLayout();
                 // Clear() only detaches WinForms controls; dispose old cards to avoid leaking handles.
                 while(panel.Controls.Count>0){Control old=panel.Controls[0];panel.Controls.RemoveAt(0);old.Dispose();}
-                var events=new List<Entry>();foreach(var e in source.Entries)if(compareBlightfallEnabled&&e.PlayerGuid==guid&&!e.Beast)events.Add(e);
+                var events=new List<Entry>();foreach(var e in source.Entries)if(e.PlayerGuid==guid&&((!e.Beast&&compareBlightfallEnabled)||(e.Beast&&compareBeastEnabled)))events.Add(e);
                 events.Sort(delegate(Entry a,Entry b){int t=a.Time.CompareTo(b.Time);return t!=0?t:a.Sequence.CompareTo(b.Sequence);});
-                long dread=0,virulent=0;int hits=0;foreach(var e in events){dread+=e.Dread;virulent+=e.Virulent;hits+=e.Hits.Count;}
+                long dread=0,virulent=0;int hits=0;foreach(var e in events){dread+=e.Beast?e.Corrupted:e.Dread;virulent+=e.Beast?e.Life:e.Virulent;hits+=e.Hits.Count;}
                 var header=new Panel{Width=width,Height=77,BackColor=Color.FromArgb(28,34,37),Margin=new Padding(2,2,2,8)};
                 header.Controls.Add(new Label{Text=names[guid],ForeColor=Color.White,Font=new Font("Segoe UI",12,FontStyle.Bold),
                     Bounds=new Rectangle(12,8,width-24,27),AutoEllipsis=true});
@@ -1594,13 +1601,13 @@ namespace BlightfallPopsDesktop {
                     // two damage columns, hit counter and right-aligned total.
                     var card=new Panel{Width=width,Height=55,BackColor=rowColor,
                         Margin=new Padding(2,2,2,4)};
-                    var accent=new Panel{Bounds=new Rectangle(0,0,3,55),BackColor=green};
+                    var accent=new Panel{Bounds=new Rectangle(0,0,3,55),BackColor=e.Beast?red:green};
                     card.Controls.Add(accent);
                     int iconSize=Math.Max(18,Math.Min(23,settings.IconSize));
                     int secondX=Math.Max(165,width/2-6);
                     int totalX=Math.Max(secondX+80,width-96);
                     var compareAuras=VisibleCustomAuras(e,true);
-                    int statusCount=(settings.ShowSoulReaper?1:0)+(settings.ShowScythe?1:0);
+                    int statusCount=e.Beast?(settings.ShowBeastBlightfall?1:0):((settings.ShowSoulReaper?1:0)+(settings.ShowScythe?1:0));
                     int auraSlots=compareAuras.Count;
                     int statusX=width-9-(statusCount+auraSlots)*iconSize-Math.Max(0,statusCount+auraSlots-1)*3;
                     // Keep the VP damage value readable even with many configured auras.
@@ -1609,29 +1616,31 @@ namespace BlightfallPopsDesktop {
                     int availableSlots=Math.Max(0,(width-9-safeIconStart+3)/(iconSize+3));
                     int customSlots=Math.Min(auraSlots,Math.Max(0,availableSlots-statusCount));
                     statusX=width-9-(statusCount+customSlots)*iconSize-Math.Max(0,statusCount+customSlots-1)*3;
-                    var bf=SpellIcon("BF",9,9,36);
+                    var bf=SpellIcon(e.Beast?"BB":"BF",9,9,36);
                     card.Controls.Add(bf);
-                    var title=Label("#"+index+"  "+e.Time.ToString("HH:mm:ss"),Color.White,52,1,
+                    var title=Label((e.Beast?"Beast #":"#")+index+"  "+e.Time.ToString("HH:mm:ss"),Color.White,52,1,
                         Math.Max(35,secondX-60),true);
                     card.Controls.Add(title);
                     var count=Label(e.Hits.Count+(e.Hits.Count==1?" hit":" hits"),dim,
                         secondX-3,3,Math.Max(40,totalX-secondX));
                     card.Controls.Add(count);
-                    var total=Label(Format(e.Dread+e.Virulent),green,totalX,1,
+                    var total=Label(Format(e.Beast?e.Corrupted+e.Life:e.Dread+e.Virulent),green,totalX,1,
                         Math.Max(35,width-totalX-8),true);
                     total.TextAlign=ContentAlignment.TopRight;card.Controls.Add(total);
-                    var dp=SpellIcon("DP",55,29,iconSize);
-                    var vp=SpellIcon("VP",secondX,29,iconSize);
+                    var dp=SpellIcon(e.Beast?"CB":"DP",55,29,iconSize);
+                    var vp=SpellIcon(e.Beast?"BiL":"VP",secondX,29,iconSize);
                     card.Controls.Add(dp);card.Controls.Add(vp);
-                    var dpValue=Label(Format(e.Dread),e.Hits.Exists(h=>h.Kind=="DP"&&h.Crit)?Color.Gold:dim,
+                    var dpValue=Label(Format(e.Beast?e.Corrupted:e.Dread),e.Hits.Exists(h=>h.Kind==(e.Beast?"CB":"DP")&&h.Crit)?Color.Gold:dim,
                         55+iconSize+4,28,Math.Max(30,secondX-55-iconSize-8));
-                    var vpValue=Label(Format(e.Virulent),VirulentDamageColor(e),
+                    var vpValue=Label(Format(e.Beast?e.Life:e.Virulent),e.Beast?dim:VirulentDamageColor(e),
                         secondX+iconSize+4,28,Math.Max(16,(statusCount+customSlots>0?statusX:width-7)-secondX-iconSize-8));
                     card.Controls.Add(dpValue);card.Controls.Add(vpValue);
                     // Use the same status icons, activity indicators, and tooltips as main compact cards.
-                    if(settings.ShowSoulReaper)
+                    if(!e.Beast&&settings.ShowSoulReaper)
                         card.Controls.Add(SpellIcon("SR",statusX,29,iconSize,SoulReaperTip(e),e.SoulReaper));
-                    if(settings.ShowScythe){
+                    if(e.Beast&&settings.ShowBeastBlightfall)
+                        card.Controls.Add(SpellIcon("BF",statusX,29,iconSize,"Blightfall before Blood Beast",e.BlightfallBefore));
+                    if(!e.Beast&&settings.ShowScythe){
                         string scTip="Festering Scythe: "+(e.Scythe.HasValue?(e.Scythe.Value?"active":"inactive"):"unknown");
                         card.Controls.Add(SpellIcon("SC",statusX+(statusCount-1)*(iconSize+3),29,iconSize,scTip,e.Scythe));
                     }
