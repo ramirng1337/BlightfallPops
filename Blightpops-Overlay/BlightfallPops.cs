@@ -658,7 +658,10 @@ namespace BlightfallPopsDesktop {
             var statusLabel=new Label{Text="Card definitions are saved locally; live tracking is not changed.",Dock=DockStyle.Fill,
                 TextAlign=ContentAlignment.MiddleLeft,ForeColor=dim,Font=new Font("Segoe UI",9)};
             footer.Controls.Add(statusLabel);footer.Controls.Add(save);editor.Controls.Add(footer);
-            var split=new SplitContainer{Dock=DockStyle.Fill,SplitterDistance=440,BackColor=background,Panel1MinSize=290,Panel2MinSize=290};
+            // SplitContainer starts with zero width before docking/layout. Setting minimums
+            // during initialization can throw InvalidOperationException on .NET Framework.
+            var split=new SplitContainer{Dock=DockStyle.Fill,BackColor=background};
+            split.Panel1MinSize=0;split.Panel2MinSize=0;
             editor.Controls.Add(split);split.BringToFront();titleBar.BringToFront();footer.BringToFront();
             var left=new Panel{Dock=DockStyle.Fill,AutoScroll=true,BackColor=Color.FromArgb(25,29,34),Padding=new Padding(14)};
             split.Panel1.Controls.Add(left);
@@ -773,6 +776,15 @@ namespace BlightfallPopsDesktop {
             grip.MouseUp+=delegate{resizeAt=null;};
             editor.FormClosed+=delegate{foreach(var img in ownedImages)img.Dispose();};
             fillPresets();presets.SelectedIndex=0;fillEffects();
+            editor.Shown+=delegate{
+                // Wait until the form has a real client width before setting the divider.
+                int usable=Math.Max(1,split.ClientSize.Width-split.SplitterWidth);
+                int min=Math.Min(290,Math.Max(0,(usable-1)/2));
+                split.Panel1MinSize=min;
+                split.Panel2MinSize=min;
+                int maximum=Math.Max(min,usable-min);
+                split.SplitterDistance=Math.Max(min,Math.Min(440,maximum));
+            };
             editor.Show(this);
         }
 
