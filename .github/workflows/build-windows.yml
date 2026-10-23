@@ -2,6 +2,12 @@ name: Build portable Windows overlay
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'EXE version for manual builds (e.g. v1.0.0.26)'
+        required: true
+        default: 'v1.0.0.26'
+        type: string
   push:
     tags:
       - 'v*'
@@ -14,6 +20,27 @@ jobs:
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set EXE version from tag or manual input
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || inputs.version }}
+        run: |
+          $version = $env:RELEASE_TAG -replace '^[vV]', ''
+          if ($version -notmatch '^\d+\.\d+\.\d+\.\d+$') {
+            throw "Invalid version '$version'. Expected v1.0.0.26 format."
+          }
+          $parts = $version.Split('.')
+          if (@($parts | Where-Object { [int]$_ -gt 65535 }).Count -gt 0) {
+            throw 'Each version component must be between 0 and 65535.'
+          }
+          $versionFile = 'Blightpops-Overlay/VersionInfo.cs'
+          @"
+          using System.Reflection;
+          [assembly: AssemblyVersion("$version")]
+          [assembly: AssemblyFileVersion("$version")]
+          "@ | Set-Content -LiteralPath $versionFile -Encoding UTF8
+          Write-Host "Compiling EXE version $version"
 
       - name: Compile the standalone EXE
         working-directory: Blightpops-Overlay
@@ -48,7 +75,7 @@ jobs:
         run: |
           $version = [System.Reflection.AssemblyName]::GetAssemblyName((Resolve-Path Blightpops-Overlay/BlightfallPops.exe)).Version.ToString()
           $tagVersion = '${{ github.ref_name }}' -replace '^[vV]', ''
-          if ($version -ne $tagVersion) { throw "EXE version $version does not match tag $tagVersion. Update VersionInfo.cs first." }
+          if ($version -ne $tagVersion) { throw "EXE version $version does not match tag $tagVersion." }
 
       - name: Pack the public download
         shell: pwsh
@@ -70,4 +97,11 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "${{ github.ref_name }}" "dist/BlightfallPops.zip" --title "Blightfall Pops ${{ github.ref_name }}" --generate-notes
+        run: |
+          $tag = '${{ github.ref_name }}'
+          if (gh release view $tag 2>$null) {
+            gh release upload $tag 'dist/BlightfallPops.zip' --clobber
+          } else {
+            gh release create $tag 'dist/BlightfallPops.zip' --title "Blightfall Pops $tag" --generate-notes
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub release publishing failed' }
