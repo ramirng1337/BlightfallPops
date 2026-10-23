@@ -655,9 +655,19 @@ namespace BlightfallPopsDesktop {
             public string Name="New effect", SpellId="", Type="Buff", IconPath="", Condition="Active at event";
             public bool ShowCompact=false, ShowDetailed=true;
         }
+        private static CustomEffect CopyEffect(CustomEffect source){
+            return new CustomEffect{ Name=source.Name, SpellId=source.SpellId, Type=source.Type,
+                IconPath=source.IconPath, Condition=source.Condition,
+                ShowCompact=source.ShowCompact, ShowDetailed=source.ShowDetailed };
+        }
         private sealed class CustomCard {
             public string Name="Custom event", SpellId="", IconPath="";
             public List<CustomEffect> Effects=new List<CustomEffect>();
+        }
+        private static CustomCard CloneCard(CustomCard source){
+            var copy=new CustomCard{Name=source.Name,SpellId=source.SpellId,IconPath=source.IconPath};
+            if(source.Effects!=null)foreach(var effect in source.Effects)if(effect!=null)copy.Effects.Add(CopyEffect(effect));
+            return copy;
         }
         private static string CardDefinitionsPath {
             get { return Path.Combine(Settings.DirectoryPath,"event-cards.json"); }
@@ -933,6 +943,9 @@ namespace BlightfallPopsDesktop {
             var clearImage=BuilderButton("Use Spell ID / default icon");
             var addBuff=BuilderButton("+ Add Buff");
             var addDebuff=BuilderButton("+ Add Debuff");
+            var reuseEffect=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White,Height=29};
+            var reuseButton=BuilderButton("+ Add selected template");
+            var templateEffects=new List<CustomEffect>();
             var addButtons=new TableLayoutPanel{ColumnCount=2,RowCount=1,Margin=Padding.Empty,Padding=Padding.Empty,BackColor=Color.FromArgb(25,29,34)};
             addButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
             addButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
@@ -975,6 +988,7 @@ namespace BlightfallPopsDesktop {
             addField("Main icon",imageButton);addField("",clearImage);
             activeFields=effectFields;
             addField("Linked buffs / debuffs",effectLists);addField("",addButtons);
+            addField("Reuse effect from saved cards",reuseEffect);addField("",reuseButton);
             addField("Selected effect name",effectName);addField("Selected effect Spell ID",effectSpell);
             addField("Display condition",condition);
             addField("",showCompact);addField("",showDetailed);
@@ -1078,13 +1092,43 @@ namespace BlightfallPopsDesktop {
                 else effects.SelectedIndex=-1;
                 refresh();
             };
+            Action refreshEffectTemplates=delegate{
+                string selectedText=reuseEffect.SelectedItem as string;
+                reuseEffect.Items.Clear();templateEffects.Clear();
+                var seen=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach(var sourceCard in definitions){
+                    if(sourceCard==null||sourceCard.Effects==null)continue;
+                    foreach(var sourceEffect in sourceCard.Effects){
+                        if(sourceEffect==null||String.IsNullOrWhiteSpace(sourceEffect.SpellId))continue;
+                        string key=(sourceEffect.Type??"")+"|"+sourceEffect.SpellId;
+                        if(!seen.Add(key))continue;
+                        templateEffects.Add(CopyEffect(sourceEffect));
+                        reuseEffect.Items.Add(sourceEffect.Type+": "+sourceEffect.Name+" ["+sourceEffect.SpellId+"]");
+                    }
+                }
+                int oldIndex=selectedText==null?-1:reuseEffect.Items.IndexOf(selectedText);
+                if(oldIndex>=0)reuseEffect.SelectedIndex=oldIndex;
+                else if(reuseEffect.Items.Count>0)reuseEffect.SelectedIndex=0;
+            };
+            reuseEffect.DropDown+=delegate{refreshEffectTemplates();};
+            reuseButton.Click+=delegate{
+                int selected=reuseEffect.SelectedIndex;
+                if(selected<0||selected>=templateEffects.Count){
+                    statusLabel.Text="Select a saved effect template first.";return;
+                }
+                var copy=CopyEffect(templateEffects[selected]);
+                card.Effects.Add(copy);
+                fillEffects();effects.SelectedIndex=card.Effects.Count-1;
+                statusLabel.Text=copy.Name+" copied into this card. Click Save card to keep it.";
+            };
+            refreshEffectTemplates();
             Action fillPresets=delegate{
                 presets.Items.Clear();presets.Items.Add("New card");foreach(var c in definitions)presets.Items.Add(c.Name);
             };
             bool loading=false;
             presets.SelectedIndexChanged+=delegate{
                 if(loading)return;int i=presets.SelectedIndex;
-                card=i>0&&i<=definitions.Count?definitions[i-1]:new CustomCard();
+                card=i>0&&i<=definitions.Count?CloneCard(definitions[i-1]):new CustomCard();
                 loading=true;name.Text=card.Name;spell.Text=card.SpellId;loading=false;fillEffects();
             };
             name.TextChanged+=delegate{card.Name=name.Text;refresh();};
@@ -1189,7 +1233,7 @@ namespace BlightfallPopsDesktop {
                 foreach(var effect in card.Effects){int effectId;if(!int.TryParse(effect.SpellId,out effectId)||effectId<=0){MessageBox.Show(editor,"Each linked effect needs a valid numeric Spell ID.","Event Card Builder",MessageBoxButtons.OK,MessageBoxIcon.Warning);return;}}
                 int selected=presets.SelectedIndex;
                 if(selected>0&&selected<=definitions.Count)definitions[selected-1]=card;else definitions.Add(card);
-                try{WriteCustomCards(definitions);fillPresets();presets.SelectedIndex=definitions.IndexOf(card)+1;
+                try{WriteCustomCards(definitions);fillPresets();presets.SelectedIndex=definitions.IndexOf(card)+1;refreshEffectTemplates();
                     if((card.SpellId=="1271967"||card.SpellId=="1271974"))foreach(var effect in card.Effects){
                         tracker.WatchedAuras[effect.SpellId]=effect.Type;customAuraInfo[effect.SpellId]=effect;
                     }
