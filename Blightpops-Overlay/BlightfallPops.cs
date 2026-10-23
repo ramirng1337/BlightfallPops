@@ -635,6 +635,24 @@ namespace BlightfallPopsDesktop {
             try{if(!String.IsNullOrEmpty(path)&&File.Exists(path))using(var loaded=Image.FromFile(path))return new Bitmap(loaded);}catch{}
             return null;
         }
+        private static Bitmap MakeBuilderMenuIcon(){
+            // Draw a sharp, transparent 20px card-and-pencil glyph for the cogwheel menu.
+            var bitmap=new Bitmap(20,20,System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using(var g=Graphics.FromImage(bitmap)){
+                g.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                using(var back=new SolidBrush(Color.FromArgb(54,74,95)))g.FillRectangle(back,2,3,13,13);
+                using(var pen=new Pen(Color.FromArgb(162,201,230),1.5f))g.DrawRectangle(pen,2,3,13,13);
+                using(var icon=new SolidBrush(Color.FromArgb(106,193,218)))g.FillRectangle(icon,4,5,5,5);
+                using(var line=new Pen(Color.FromArgb(196,209,223),1.2f)){
+                    g.DrawLine(line,10,7,13,7);g.DrawLine(line,10,10,13,10);g.DrawLine(line,4,13,11,13);
+                }
+                using(var pen=new Pen(Color.FromArgb(235,202,112),3f)){
+                    pen.StartCap=System.Drawing.Drawing2D.LineCap.Round;
+                    g.DrawLine(pen,11,17,18,10);
+                }
+            }
+            return bitmap;
+        }
         private void ShowEventCardBuilder(){
             var definitions=ReadCustomCards();
             var card=new CustomCard();
@@ -663,10 +681,39 @@ namespace BlightfallPopsDesktop {
             var split=new SplitContainer{Dock=DockStyle.Fill,BackColor=background};
             split.Panel1MinSize=0;split.Panel2MinSize=0;
             editor.Controls.Add(split);split.BringToFront();titleBar.BringToFront();footer.BringToFront();
-            var left=new Panel{Dock=DockStyle.Fill,AutoScroll=true,BackColor=Color.FromArgb(25,29,34),Padding=new Padding(14)};
-            split.Panel1.Controls.Add(left);
-            var form=new TableLayoutPanel{Dock=DockStyle.Top,AutoSize=true,ColumnCount=1,Padding=new Padding(0,0,12,12)};
+            var left=new BufferedPanel{Dock=DockStyle.Fill,BackColor=Color.FromArgb(25,29,34),TabStop=true};
+            var leftTrack=new Panel{Dock=DockStyle.Right,Width=9,BackColor=Color.FromArgb(22,25,29)};
+            var leftThumb=new Panel{BackColor=Color.FromArgb(91,102,110),Width=6,Cursor=Cursors.Hand};
+            leftTrack.Controls.Add(leftThumb);
+            split.Panel1.Controls.Add(left);left.Controls.Add(leftTrack);
+            var form=new TableLayoutPanel{AutoSize=true,AutoSizeMode=AutoSizeMode.GrowAndShrink,ColumnCount=1,
+                Location=new Point(14,12),Padding=new Padding(0,0,12,12),BackColor=left.BackColor};
             form.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));left.Controls.Add(form);
+            int leftScroll=0;bool thumbDragging=false;int thumbDragY=0,thumbDragOffset=0;
+            Action updateLeftScroll=delegate{
+                int viewport=Math.Max(1,left.ClientSize.Height);
+                int extent=Math.Max(0,form.Height+24-viewport);
+                leftScroll=Math.Max(0,Math.Min(extent,leftScroll));
+                form.Location=new Point(14,12-leftScroll);
+                leftTrack.Visible=extent>0;
+                if(extent==0)return;
+                int trackHeight=Math.Max(1,leftTrack.ClientSize.Height);
+                int thumbHeight=Math.Min(trackHeight,Math.Max(28,(int)((long)trackHeight*viewport/Math.Max(viewport,form.Height+24))));
+                leftThumb.Bounds=new Rectangle(1,(int)((long)leftScroll*(trackHeight-thumbHeight)/Math.Max(1,extent)),6,thumbHeight);
+            };
+            Action layoutLeft=delegate{
+                int w=Math.Max(160,left.ClientSize.Width-leftTrack.Width-28);
+                if(form.Width!=w)form.Width=w;
+                updateLeftScroll();
+            };
+            left.Resize+=delegate{layoutLeft();};form.SizeChanged+=delegate{updateLeftScroll();};
+            MouseEventHandler leftWheel=delegate(object sender,MouseEventArgs e){leftScroll-=Math.Sign(e.Delta)*Math.Max(32,SystemInformation.MouseWheelScrollLines*23);updateLeftScroll();};
+            left.MouseWheel+=leftWheel;form.MouseWheel+=leftWheel;leftTrack.MouseWheel+=leftWheel;leftThumb.MouseWheel+=leftWheel;
+            leftTrack.MouseDown+=delegate(object sender,MouseEventArgs e){if(e.Button==MouseButtons.Left){leftScroll+=(e.Y<leftThumb.Top?-1:1)*Math.Max(60,left.Height-60);updateLeftScroll();}};
+            leftThumb.MouseDown+=delegate(object sender,MouseEventArgs e){if(e.Button==MouseButtons.Left){thumbDragging=true;thumbDragY=Cursor.Position.Y;thumbDragOffset=leftScroll;leftThumb.Capture=true;}};
+            leftThumb.MouseMove+=delegate{if(thumbDragging){int extent=Math.Max(0,form.Height+24-left.Height);int travel=Math.Max(1,leftTrack.Height-leftThumb.Height);leftScroll=thumbDragOffset+(Cursor.Position.Y-thumbDragY)*extent/travel;updateLeftScroll();}};
+            leftThumb.MouseUp+=delegate{thumbDragging=false;leftThumb.Capture=false;};
+            leftThumb.MouseCaptureChanged+=delegate{thumbDragging=false;};
             Action<string,Control> addField=delegate(string caption,Control control){
                 var label=BuilderLabel(caption);label.Dock=DockStyle.Top;form.Controls.Add(label);
                 control.Dock=DockStyle.Top;control.Margin=new Padding(0,0,0,12);form.Controls.Add(control);
@@ -676,7 +723,7 @@ namespace BlightfallPopsDesktop {
             var imageButton=BuilderButton("Choose main icon image...");
             var clearImage=BuilderButton("Use Spell ID / default icon");
             var addEffect=BuilderButton("+ Add buff / debuff");
-            var effects=new ListBox{Height=125,BackColor=Color.FromArgb(35,40,47),ForeColor=Color.White,BorderStyle=BorderStyle.FixedSingle};
+            var effects=new ListBox{Height=88,BackColor=Color.FromArgb(35,40,47),ForeColor=Color.White,BorderStyle=BorderStyle.FixedSingle};
             var effectName=BuilderText("");var effectSpell=BuilderText("");
             var effectType=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White};
             effectType.Items.AddRange(new object[]{"Buff","Debuff"});
@@ -689,29 +736,60 @@ namespace BlightfallPopsDesktop {
             addField("Selected effect name",effectName);addField("Selected effect Spell ID",effectSpell);
             addField("Effect type",effectType);addField("Display condition",condition);
             addField("Effect icon — optional custom image",effectImage);addField("",removeEffect);
+            foreach(Control control in form.Controls)if(!(control is ListBox)&&!(control is ComboBox))control.MouseWheel+=leftWheel;
             var right=new Panel{Dock=DockStyle.Fill,Padding=new Padding(14),BackColor=background};split.Panel2.Controls.Add(right);
-            var previewHeading=BuilderLabel("LIVE CARD STRUCTURE PREVIEW");previewHeading.Dock=DockStyle.Top;right.Controls.Add(previewHeading);
-            var preview=new BufferedPanel{Dock=DockStyle.Top,Height=150,BackColor=rowColor};right.Controls.Add(preview);preview.BringToFront();
-            var note=BuilderLabel("Click the image placeholders to import a custom icon.");note.Dock=DockStyle.Top;note.Height=45;
-            right.Controls.Add(note);note.BringToFront();
-            var mainIcon=new PictureBox{Bounds=new Rectangle(12,14,48,48),BackColor=Color.FromArgb(45,51,59),SizeMode=PictureBoxSizeMode.Zoom,Cursor=Cursors.Hand};
-            var mainText=new Label{Bounds=new Rectangle(72,14,300,27),ForeColor=Color.White,Font=new Font("Segoe UI",11,FontStyle.Bold)};
-            var subText=new Label{Bounds=new Rectangle(72,42,300,24),ForeColor=dim,Font=new Font("Segoe UI",9)};
-            var effectPreview=new FlowLayoutPanel{Bounds=new Rectangle(12,78,400,60),BackColor=rowColor,WrapContents=false,AutoScroll=true};
-            preview.Controls.AddRange(new Control[]{mainIcon,mainText,subText,effectPreview});
+            var previewHeading=BuilderLabel("LIVE EVENT CARD PREVIEW  •  CLICK AN ELEMENT TO EDIT");previewHeading.Dock=DockStyle.Top;
+            var preview=new BufferedPanel{Dock=DockStyle.Top,Height=128,BackColor=background};
+            right.Controls.Add(preview);right.Controls.Add(previewHeading);
+            var cardSurface=new BufferedPanel{BackColor=rowColor,Height=94};preview.Controls.Add(cardSurface);
+            var accent=new Panel{BackColor=green,Width=3,Dock=DockStyle.Left};cardSurface.Controls.Add(accent);
+            var mainIcon=new PictureBox{Bounds=new Rectangle(10,12,42,42),BackColor=Color.FromArgb(45,51,59),SizeMode=PictureBoxSizeMode.Zoom,Cursor=Cursors.Hand};
+            var mainText=new Label{ForeColor=Color.White,Font=new Font("Segoe UI",10,FontStyle.Bold),Cursor=Cursors.Hand,AutoEllipsis=true};
+            var subText=new Label{ForeColor=dim,Font=new Font("Segoe UI",8),Cursor=Cursors.Hand,AutoEllipsis=true};
+            var previewTotal=new Label{Text="1.35M",ForeColor=green,Font=new Font("Segoe UI",10,FontStyle.Bold),TextAlign=ContentAlignment.TopRight,Cursor=Cursors.Hand};
+            var previewHits=new Label{Text="8 hits",ForeColor=dim,Font=new Font("Segoe UI",8),TextAlign=ContentAlignment.TopRight,Cursor=Cursors.Hand};
+            var effectPreview=new FlowLayoutPanel{Height=34,BackColor=rowColor,WrapContents=false,AutoScroll=false};
+            cardSurface.Controls.AddRange(new Control[]{mainIcon,mainText,subText,previewTotal,previewHits,effectPreview});
+            Action layoutPreview=delegate{
+                int width=Math.Max(180,preview.ClientSize.Width-4);
+                cardSurface.SetBounds(2,6,width,94);
+                int infoWidth=Math.Max(40,width-175);
+                mainText.SetBounds(61,10,infoWidth,24);
+                subText.SetBounds(61,35,infoWidth,21);
+                previewTotal.SetBounds(Math.Max(105,width-102),10,Math.Min(90,width-110),24);
+                previewHits.SetBounds(Math.Max(105,width-102),35,Math.Min(90,width-110),21);
+                effectPreview.SetBounds(10,60,Math.Max(60,width-20),32);
+            };
+            preview.Resize+=delegate{layoutPreview();};layoutPreview();
+            // All text and icon regions in the preview are direct editor shortcuts.
+            mainText.Click+=delegate{name.Focus();};subText.Click+=delegate{spell.Focus();};
+            previewTotal.Click+=delegate{name.Focus();};previewHits.Click+=delegate{spell.Focus();};
+            mainIcon.Paint+=delegate(object sender,PaintEventArgs e){if(mainIcon.Image==null){
+                using(var pen=new Pen(Color.FromArgb(145,164,184),1.5f)){
+                    e.Graphics.DrawRectangle(pen,11,12,20,17);e.Graphics.DrawEllipse(pen,15,15,5,5);
+                    e.Graphics.DrawLine(pen,12,27,20,21);e.Graphics.DrawLine(pen,20,21,28,27);
+                }
+            }};
             var ownedImages=new List<Image>();
-            Action<Image,PictureBox> setImage=delegate(Image img,PictureBox box){if(img!=null){ownedImages.Add(img);box.Image=img;}else box.Image=null;};
+            Action<Image,PictureBox> setImage=delegate(Image img,PictureBox box){
+                var previous=box.Image;box.Image=img;
+                if(previous!=null){ownedImages.Remove(previous);previous.Dispose();}
+                if(img!=null)ownedImages.Add(img);
+            };
             Action refresh=delegate{
                 mainText.Text=String.IsNullOrWhiteSpace(name.Text)?"Custom event":name.Text;
                 subText.Text="Spell ID: "+(String.IsNullOrWhiteSpace(spell.Text)?"not assigned":spell.Text);
-                setImage(ReadBuilderImage(card.IconPath),mainIcon);
+                if(!String.Equals(mainIcon.Tag as string,card.IconPath,StringComparison.Ordinal)){
+                    setImage(ReadBuilderImage(card.IconPath),mainIcon);mainIcon.Tag=card.IconPath;
+                }
+                mainIcon.Invalidate();
                 while(effectPreview.Controls.Count>0){Control c=effectPreview.Controls[0];effectPreview.Controls.RemoveAt(0);c.Dispose();}
                 foreach(var effect in card.Effects){
                     var pic=new PictureBox{Size=new Size(35,35),Margin=new Padding(2),BackColor=Color.FromArgb(45,51,59),SizeMode=PictureBoxSizeMode.Zoom,Cursor=Cursors.Hand};
                     setImage(ReadBuilderImage(effect.IconPath),pic);
-                    if(pic.Image==null){pic.Paint+=delegate(object sender,PaintEventArgs e){TextRenderer.DrawText(e.Graphics,"+",new Font("Segoe UI",13),pic.ClientRectangle,dim,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);};}
+                    if(pic.Image==null){pic.Paint+=delegate(object sender,PaintEventArgs e){TextRenderer.DrawText(e.Graphics,"+",SystemFonts.MessageBoxFont,pic.ClientRectangle,dim,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);};}
                     var selectedEffect=effect;pic.Click+=delegate{effects.SelectedIndex=card.Effects.IndexOf(selectedEffect);effectImage.PerformClick();};
-                    new ToolTip().SetToolTip(pic,effect.Name+" ("+effect.Type+", "+effect.SpellId+")");
+                    toolTip.SetToolTip(pic,effect.Name+" ("+effect.Type+", "+effect.SpellId+")");
                     effectPreview.Controls.Add(pic);
                 }
             };
@@ -777,6 +855,7 @@ namespace BlightfallPopsDesktop {
             editor.FormClosed+=delegate{foreach(var img in ownedImages)img.Dispose();};
             fillPresets();presets.SelectedIndex=0;fillEffects();
             editor.Shown+=delegate{
+                layoutLeft();layoutPreview();
                 // Wait until the form has a real client width before setting the divider.
                 int usable=Math.Max(1,split.ClientSize.Width-split.SplitterWidth);
                 int min=Math.Min(290,Math.Max(0,(usable-1)/2));
@@ -1151,6 +1230,8 @@ namespace BlightfallPopsDesktop {
             compareItem.Click+=delegate{ShowCompareWindow();};
             menu.Items.Add(compareItem);
             var builderItem=new ToolStripMenuItem("Event Card Builder...");
+            builderItem.Image=MakeBuilderMenuIcon();
+            builderItem.ImageScaling=ToolStripItemImageScaling.None;
             builderItem.Click+=delegate{ShowEventCardBuilder();};
             menu.Items.Add(builderItem);
             menu.Items.Add(new ToolStripSeparator());
