@@ -656,7 +656,7 @@ namespace BlightfallPopsDesktop {
         private void ShowEventCardBuilder(){
             var definitions=ReadCustomCards();
             var card=new CustomCard();
-            var editor=new Form{Text="Blightfall Pops — Event Card Builder",Size=new Size(940,700),MinimumSize=new Size(700,480),
+            var editor=new Form{Text="Blightfall Pops — Event Card Builder",Size=new Size(1060,650),MinimumSize=new Size(790,480),
                 StartPosition=FormStartPosition.CenterParent,BackColor=background,ForeColor=Color.White,FormBorderStyle=FormBorderStyle.None,ShowIcon=false};
             var titleBar=new Panel{Dock=DockStyle.Top,Height=33,BackColor=Color.FromArgb(10,11,13)};
             var heading=new Label{Text="BLIGHTFALL POPS  /  EVENT CARD BUILDER",ForeColor=Color.FromArgb(222,224,218),
@@ -686,9 +686,16 @@ namespace BlightfallPopsDesktop {
             var leftThumb=new Panel{BackColor=Color.FromArgb(91,102,110),Width=6,Cursor=Cursors.Hand};
             leftTrack.Controls.Add(leftThumb);
             split.Panel1.Controls.Add(left);left.Controls.Add(leftTrack);
-            var form=new TableLayoutPanel{AutoSize=true,AutoSizeMode=AutoSizeMode.GrowAndShrink,ColumnCount=1,
-                Location=new Point(14,12),Padding=new Padding(0,0,12,12),BackColor=left.BackColor};
-            form.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));left.Controls.Add(form);
+            var form=new TableLayoutPanel{AutoSize=false,ColumnCount=2,RowCount=1,
+                Location=new Point(12,12),Padding=new Padding(0,0,6,12),BackColor=left.BackColor};
+            form.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
+            form.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
+            var eventFields=new TableLayoutPanel{AutoSize=true,AutoSizeMode=AutoSizeMode.GrowAndShrink,ColumnCount=1,Dock=DockStyle.Top,Margin=new Padding(0,0,9,0)};
+            var effectFields=new TableLayoutPanel{AutoSize=true,AutoSizeMode=AutoSizeMode.GrowAndShrink,ColumnCount=1,Dock=DockStyle.Top,Margin=new Padding(9,0,0,0)};
+            eventFields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+            effectFields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+            form.Controls.Add(eventFields,0,0);form.Controls.Add(effectFields,1,0);
+            left.Controls.Add(form);
             int leftScroll=0;bool thumbDragging=false;int thumbDragY=0,thumbDragOffset=0;
             Action updateLeftScroll=delegate{
                 int viewport=Math.Max(1,left.ClientSize.Height);
@@ -702,8 +709,13 @@ namespace BlightfallPopsDesktop {
                 leftThumb.Bounds=new Rectangle(1,(int)((long)leftScroll*(trackHeight-thumbHeight)/Math.Max(1,extent)),6,thumbHeight);
             };
             Action layoutLeft=delegate{
-                int w=Math.Max(160,left.ClientSize.Width-leftTrack.Width-28);
+                int w=Math.Max(310,left.ClientSize.Width-leftTrack.Width-24);
                 if(form.Width!=w)form.Width=w;
+                int half=Math.Max(145,(w-6)/2);
+                eventFields.Width=half;effectFields.Width=half;
+                eventFields.PerformLayout();effectFields.PerformLayout();
+                form.Height=Math.Max(eventFields.Height,effectFields.Height)+24;
+                form.PerformLayout();
                 updateLeftScroll();
             };
             left.Resize+=delegate{layoutLeft();};form.SizeChanged+=delegate{updateLeftScroll();};
@@ -714,9 +726,10 @@ namespace BlightfallPopsDesktop {
             leftThumb.MouseMove+=delegate{if(thumbDragging){int extent=Math.Max(0,form.Height+24-left.Height);int travel=Math.Max(1,leftTrack.Height-leftThumb.Height);leftScroll=thumbDragOffset+(Cursor.Position.Y-thumbDragY)*extent/travel;updateLeftScroll();}};
             leftThumb.MouseUp+=delegate{thumbDragging=false;leftThumb.Capture=false;};
             leftThumb.MouseCaptureChanged+=delegate{thumbDragging=false;};
+            TableLayoutPanel activeFields=eventFields;
             Action<string,Control> addField=delegate(string caption,Control control){
-                var label=BuilderLabel(caption);label.Dock=DockStyle.Top;form.Controls.Add(label);
-                control.Dock=DockStyle.Top;control.Margin=new Padding(0,0,0,12);form.Controls.Add(control);
+                var label=BuilderLabel(caption);label.Dock=DockStyle.Fill;label.Margin=new Padding(0,0,0,3);activeFields.Controls.Add(label);
+                control.Dock=DockStyle.Fill;control.Margin=new Padding(0,0,0,9);activeFields.Controls.Add(control);
             };
             var presets=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White,Height=29};
             var name=BuilderText(card.Name);var spell=BuilderText(card.SpellId);
@@ -730,13 +743,15 @@ namespace BlightfallPopsDesktop {
             var condition=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White};
             condition.Items.AddRange(new object[]{"Active at event","Applied by event","Detected in event window","Removed in event window"});
             var effectImage=BuilderButton("Choose effect icon image...");var removeEffect=BuilderButton("Remove selected effect");
-            addField("Saved card",presets);addField("Card name",name);addField("Main Spell ID (combat-log ID)",spell);
-            addField("Main icon — optional custom image",imageButton);addField("",clearImage);
+            addField("Saved card",presets);addField("Card name",name);addField("Main Spell ID",spell);
+            addField("Main icon",imageButton);addField("",clearImage);
+            activeFields=effectFields;
             addField("Linked buffs / debuffs",effects);addField("",addEffect);
             addField("Selected effect name",effectName);addField("Selected effect Spell ID",effectSpell);
             addField("Effect type",effectType);addField("Display condition",condition);
             addField("Effect icon — optional custom image",effectImage);addField("",removeEffect);
-            foreach(Control control in form.Controls)if(!(control is ListBox)&&!(control is ComboBox))control.MouseWheel+=leftWheel;
+            foreach(var fieldColumn in new[]{eventFields,effectFields})
+                foreach(Control control in fieldColumn.Controls)if(!(control is ListBox)&&!(control is ComboBox))control.MouseWheel+=leftWheel;
             var right=new Panel{Dock=DockStyle.Fill,Padding=new Padding(14),BackColor=background};split.Panel2.Controls.Add(right);
             var previewHeading=BuilderLabel("LIVE EVENT CARD PREVIEW  •  CLICK AN ELEMENT TO EDIT");previewHeading.Dock=DockStyle.Top;
             var preview=new BufferedPanel{Dock=DockStyle.Top,Height=128,BackColor=background};
@@ -858,11 +873,12 @@ namespace BlightfallPopsDesktop {
                 layoutLeft();layoutPreview();
                 // Wait until the form has a real client width before setting the divider.
                 int usable=Math.Max(1,split.ClientSize.Width-split.SplitterWidth);
-                int min=Math.Min(290,Math.Max(0,(usable-1)/2));
+                int min=Math.Min(220,Math.Max(0,(usable-1)/2));
                 split.Panel1MinSize=min;
                 split.Panel2MinSize=min;
                 int maximum=Math.Max(min,usable-min);
-                split.SplitterDistance=Math.Max(min,Math.Min(440,maximum));
+                split.SplitterDistance=Math.Max(min,Math.Min((int)(usable*0.59),maximum));
+                layoutLeft();
             };
             editor.Show(this);
         }
