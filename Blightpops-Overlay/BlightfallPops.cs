@@ -12,7 +12,9 @@ using System.Windows.Forms;
 
 namespace BlightfallPopsDesktop {
     internal sealed class Hit { public string Kind, Target; public long Amount, Overkill; public bool Crit; }
+    internal sealed class AuraSnapshot { public string Name, SpellId, IconPath; public bool? Active; public int Stacks; public bool HasDose; }
     internal sealed class Entry {
+        public readonly List<AuraSnapshot> AuraSnapshots=new List<AuraSnapshot>();
         public bool Beast, DOpen, VOpen, MOpen, Exploded, BlightfallBefore;
         public bool? Scythe, SoulReaper;
         public int SoulReaperTargets;
@@ -108,6 +110,35 @@ namespace BlightfallPopsDesktop {
         private Entry pending, recentBlightfall, recentBeast;
         private readonly Dictionary<string,Entry> beasts=new Dictionary<string,Entry>();
         private readonly Dictionary<string,int> attempts=new Dictionary<string,int>();
+        // Custom aura state is tracked independently per affected unit and spell ID.
+        private sealed class AuraState { public bool Active; public int Stacks; public bool HasDose; }
+        private readonly Dictionary<string,AuraState> auraStates=new Dictionary<string,AuraState>(StringComparer.Ordinal);
+        public readonly Dictionary<string,string> WatchedAuras=new Dictionary<string,string>(StringComparer.Ordinal);
+        private static string AuraKey(string target,string spell){return target+"|"+spell;}
+        private void RecordAura(string kind,string spell,string target,List<string> fields){
+            if(!WatchedAuras.ContainsKey(spell)||String.IsNullOrEmpty(target))return;
+            string key=AuraKey(target,spell);AuraState state;
+            if(!auraStates.TryGetValue(key,out state))auraStates[key]=state=new AuraState();
+            if(kind=="SPELL_AURA_REMOVED"){state.Active=false;state.Stacks=0;return;}
+            if(kind=="SPELL_AURA_APPLIED"){state.Active=true;state.Stacks=1;return;}
+            if(kind=="SPELL_AURA_REFRESH"){state.Active=true;if(state.Stacks==0)state.Stacks=1;return;}
+            if(kind=="SPELL_AURA_APPLIED_DOSE"||kind=="SPELL_AURA_REMOVED_DOSE"){
+                // The aura stack amount is immediately after the spell's aura type.
+                int amount; if(int.TryParse(F(fields,13),NumberStyles.Integer,CultureInfo.InvariantCulture,out amount)){
+                    state.Active=amount>0;state.Stacks=Math.Max(0,amount);state.HasDose=true;
+                }
+            }
+        }
+        public void SnapshotAuras(Entry entry,string player,string target){
+            foreach(var watched in WatchedAuras){
+                // Buffs belong to the player; debuffs are checked on the cast target.
+                string guid=watched.Value=="Debuff"?target:player;
+                AuraState state=null;
+                if(!String.IsNullOrEmpty(guid))auraStates.TryGetValue(AuraKey(guid,watched.Key),out state);
+                entry.AuraSnapshots.Add(new AuraSnapshot{SpellId=watched.Key,Active=state==null?(bool?)null:state.Active,
+                    Stacks=state==null?0:state.Stacks,HasDose=state!=null&&state.HasDose});
+            }
+        }
         private readonly Dictionary<string,bool> scythe=new Dictionary<string,bool>();
         // Soul Reaper 1241521 is an enemy aura; keep each caster's targets separate.
         private readonly Dictionary<string,Dictionary<string,DateTime>> soulReaper=new Dictionary<string,Dictionary<string,DateTime>>();
@@ -117,7 +148,7 @@ namespace BlightfallPopsDesktop {
         private static readonly string[] logDates={"M/d/yyyy HH:mm:ss.FFFFFFF","d.M.yyyy HH:mm:ss.FFFFFFF"};
         private void Notify(){if(Changed!=null)Changed();}
         public void Reset(long at=0) {
-            Entries.Clear();Players.Clear();otherPending.Clear();otherRecent.Clear();otherCastNumbers.Clear();pending=null;recentBlightfall=null;recentBeast=null;beasts.Clear();attempts.Clear();scythe.Clear();soulReaper.Clear();
+            Entries.Clear();Players.Clear();otherPending.Clear();otherRecent.Clear();otherCastNumbers.Clear();pending=null;recentBlightfall=null;recentBeast=null;beasts.Clear();attempts.Clear();auraStates.Clear();scythe.Clear();soulReaper.Clear();
             castNumber=beastNumber=pullNumber=0;nextSequence=0;Guid=Player=Segment=encounter=remainder="";
             logDecoder.Reset();lastOwnCombat=DateTime.MinValue;Position=at;SkipFirstLine=at>0;Notify();
         }
@@ -212,6 +243,7 @@ namespace BlightfallPopsDesktop {
             string source=F(f,1), dest=F(f,5), spell=F(f,9);
             RecordPlayer(source,F(f,2),time);
             RecordPlayer(dest,F(f,6),time);
+            if(kind.StartsWith("SPELL_AURA_",StringComparison.Ordinal))RecordAura(kind,spell,dest,f);
             if(kind=="SPELL_SUMMON"&&spell=="434237"&&source.StartsWith("Player-")&&OwnFlags(F(f,3))&&(Guid==""||Guid==source)) {
                 if(Guid==""){Guid=source;Player=F(f,2);}UpdatePull(time);
                 var beast=new Entry {Beast=true,Number=++beastNumber,Sequence=++nextSequence,Time=time,Segment=Segment,Guid=dest,PlayerGuid=source,PlayerName=F(f,2)};
@@ -269,6 +301,7 @@ namespace BlightfallPopsDesktop {
                         Scythe=scythe.TryGetValue(source,out otherScythe)?(bool?)otherScythe:null,
                         SoulReaper=affectedOther>0,SoulReaperTargets=affectedOther,
                         PlayerGuid=source,PlayerName=F(f,2)};
+                    SnapshotAuras(otherPending[source],source,dest);
                     Notify();return;
                 }
                 if(recentBeast!=null&&!recentBeast.Exploded&&time>=recentBeast.Time){recentBeast.BlightfallBefore=true;Notify();}
@@ -282,7 +315,7 @@ namespace BlightfallPopsDesktop {
                 }
                 bool value;pending=new Entry {Time=time,Sequence=++nextSequence,Segment=Segment,
                     Scythe=scythe.TryGetValue(source,out value)?(bool?)value:null,
-                    SoulReaper=affected>0,SoulReaperTargets=affected,PlayerGuid=source,PlayerName=F(f,2)};return;
+                    SoulReaper=affected>0,SoulReaperTargets=affected,PlayerGuid=source,PlayerName=F(f,2)};SnapshotAuras(pending,source,dest);return;
             }
             if(kind!="SPELL_DAMAGE"&&kind!="SPELL_PERIODIC_DAMAGE")return;
             if(source!=Guid&&!TrackAllPlayers)return;
@@ -381,6 +414,7 @@ namespace BlightfallPopsDesktop {
 
         private readonly Settings settings=Settings.Load();
         private readonly Tracker tracker=new Tracker();
+        private readonly Dictionary<string,CustomEffect> customAuraInfo=new Dictionary<string,CustomEffect>(StringComparer.Ordinal);
         private readonly Dictionary<string,bool> playerExpanded=new Dictionary<string,bool>(StringComparer.Ordinal);
         private readonly Dictionary<string,Panel> playerHeaders=new Dictionary<string,Panel>(StringComparer.Ordinal);
         private readonly Panel bar=new Panel(), cards=new BufferedPanel(), options=new Panel(), grip=new Panel(), scrollTrack=new Panel();
@@ -498,6 +532,8 @@ namespace BlightfallPopsDesktop {
                     ScrollTo(Math.Max(0,totalContentHeight-cards.ClientSize.Height));
             };Move+=delegate {if(Visible&&WindowState==FormWindowState.Normal)Save();};
             FormClosing+=delegate {EndResizePreview(false);Save();poll.Stop();toolTip.Dispose();if(artwork!=null)artwork.Dispose();foreach(var image in spellIcons.Values)image.Dispose();foreach(var font in labelFonts.Values)font.Dispose();};
+            try{foreach(var custom in ReadCustomCards())if(custom.SpellId=="1271967")foreach(var effect in custom.Effects)
+                if(!String.IsNullOrWhiteSpace(effect.SpellId)){tracker.WatchedAuras[effect.SpellId.Trim()]=effect.Type;customAuraInfo[effect.SpellId.Trim()]=effect;}}catch{}
             tracker.WindowMs=settings.WindowMs;tracker.TrackAllPlayers=true;tracker.Changed+=delegate {dirty=true;};
             poll.Interval=350;poll.Tick+=delegate {if(resizeStart.HasValue)return;
                 if(scanningFullLog){ContinueFullLogScan();UpdateLogButton();return;}
@@ -901,7 +937,10 @@ namespace BlightfallPopsDesktop {
                 int selected=presets.SelectedIndex;
                 if(selected>0&&selected<=definitions.Count)definitions[selected-1]=card;else definitions.Add(card);
                 try{WriteCustomCards(definitions);fillPresets();presets.SelectedIndex=definitions.IndexOf(card)+1;
-                    statusLabel.Text="Saved to event-cards.json. Tracking integration comes next.";
+                    if(card.SpellId=="1271967")foreach(var effect in card.Effects){
+                        tracker.WatchedAuras[effect.SpellId]=effect.Type;customAuraInfo[effect.SpellId]=effect;
+                    }
+                    statusLabel.Text="Saved. Linked aura tracking applies to subsequent Blightfall casts.";
                 }catch(Exception ex){MessageBox.Show(editor,ex.Message,"Unable to save",MessageBoxButtons.OK,MessageBoxIcon.Error);}
             };
             var grip=new Panel{Size=new Size(18,18),Cursor=Cursors.SizeNWSE,BackColor=Color.FromArgb(43,48,52),Anchor=AnchorStyles.Bottom|AnchorStyles.Right};
@@ -1901,6 +1940,45 @@ namespace BlightfallPopsDesktop {
             if(tip!=null)toolTip.SetToolTip(box,tip);
             return box;
         }
+        private PictureBox CustomAuraIcon(AuraSnapshot aura,int x,int y,int size){
+            var box=new PictureBox{Left=x,Top=y,Width=size,Height=size,BackColor=Color.FromArgb(21,23,27),
+                SizeMode=PictureBoxSizeMode.Zoom};
+            if(!String.IsNullOrEmpty(aura.IconPath)){
+                try{box.Image=ReadBuilderImage(aura.IconPath);}catch{}
+                box.Disposed+=delegate{if(box.Image!=null)box.Image.Dispose();};
+            }
+            toolTip.SetToolTip(box,(aura.Name??aura.SpellId)+": "+(aura.Active.HasValue?(aura.Active.Value?"active":"inactive"):"unknown")+
+                (aura.HasDose&&aura.Active==true?" ("+aura.Stacks+" stacks)":""));
+            box.Paint+=delegate(object sender,PaintEventArgs e){
+                if(aura.Active==false){using(var pen=new Pen(red,Math.Max(2,size/9))){
+                    e.Graphics.DrawLine(pen,2,2,size-3,size-3);e.Graphics.DrawLine(pen,size-3,2,2,size-3);}}
+                else if(!aura.Active.HasValue){TextRenderer.DrawText(e.Graphics,"?",SizedFont(Math.Max(8,size/2),true),
+                    box.ClientRectangle,Color.White,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);}
+                if(aura.Active==true&&aura.HasDose&&aura.Stacks>0){
+                    string count=aura.Stacks.ToString(CultureInfo.InvariantCulture);
+                    using(var font=new Font("Segoe UI",Math.Max(8,size*0.35f),FontStyle.Bold)){
+                        var flags=TextFormatFlags.Right|TextFormatFlags.Bottom|TextFormatFlags.NoPadding;
+                        var area=new Rectangle(0,0,size-1,size-1);
+                        TextRenderer.DrawText(e.Graphics,count,font,new Rectangle(1,1,size-1,size-1),Color.Black,flags);
+                        TextRenderer.DrawText(e.Graphics,count,font,area,Color.White,flags);
+                    }
+                }
+            };
+            return box;
+        }
+        private void AddCustomAuras(Panel card,Entry entry,int top,int iconSize){
+            if(entry.Beast||entry.AuraSnapshots.Count==0)return;
+            int reserved=(settings.ShowSoulReaper?1:0)+(settings.ShowScythe?1:0);
+            int right=card.Width-8-reserved*(iconSize+3);
+            foreach(var aura in entry.AuraSnapshots){
+                CustomEffect info;if(customAuraInfo.TryGetValue(aura.SpellId,out info)){
+                    aura.Name=info.Name;aura.IconPath=info.IconPath;
+                }
+                var box=CustomAuraIcon(aura,right-iconSize,top,iconSize);
+                card.Controls.Add(box);right-=iconSize+3;
+                if(right<card.Width/2)break;
+            }
+        }
         private int AddHitRows(Panel card,Entry entry,string first,int y){
             var state=cardCache[entry];
             foreach(var row in state.Rows.Values)row.Visible=false;
@@ -2096,6 +2174,7 @@ namespace BlightfallPopsDesktop {
                 if(entry.Beast||settings.ShowScythe)card.Controls.Add(SpellIcon(entry.Beast?"BF":"SC",statusX+(statusCount-1)*(iconSize+3),damageTop,iconSize,tip,active));
             }
             titleLabel.Height=totalLabel.Height=TextRenderer.MeasureText("Ag",LabelFont(true)).Height+2;
+            AddCustomAuras(card,entry,damageTop,iconSize);
             ConfigureDetails(card,entry,first,baseHeight+2,baseHeight,firstLabel,secondLabel);
         }
         private void RefreshCards(bool followLatest=false){if(cards.IsDisposed)return;
