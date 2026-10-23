@@ -1499,17 +1499,30 @@ namespace BlightfallPopsDesktop {
             var leftLabel=new Label{Text="PLAYER 1",ForeColor=dim,Font=new Font("Segoe UI",9,FontStyle.Bold),AutoSize=true};
             var rightLabel=new Label{Text="PLAYER 2",ForeColor=dim,Font=new Font("Segoe UI",9,FontStyle.Bold),AutoSize=true};
             toolbar.Controls.AddRange(new Control[]{leftLabel,rightLabel,leftChoice,rightChoice,mode,leftFile,rightFile,compareEventsButton});
+            // Two-row toolbar in separate-log mode: file buttons never share space
+            // with the mode selector or event-library button.
             Action layoutToolbar=delegate{
-                int half=toolbar.ClientSize.Width/2;
-                mode.SetBounds(12,4,Math.Min(270,Math.Max(160,half-25)),25);
+                int w=toolbar.ClientSize.Width;
+                int half=w/2;
                 bool separate=mode.SelectedIndex==1;
+                int modeWidth=Math.Min(270,Math.Max(160,w/2-35));
+                mode.SetBounds(12,4,modeWidth,25);
+                int eventX=mode.Right+10;
+                int eventWidth=Math.Min(185,Math.Max(100,w-eventX-12));
+                compareEventsButton.SetBounds(eventX,4,eventWidth,25);
                 leftFile.Visible=rightFile.Visible=separate;
-                compareEventsButton.SetBounds(Math.Max(285,half-340),4,Math.Min(185,Math.Max(100,half-300)),25);
-                leftFile.SetBounds(half-143,4,130,25);
-                rightFile.SetBounds(toolbar.ClientSize.Width-143,4,130,25);
-                leftLabel.Location=new Point(13,37);rightLabel.Location=new Point(half+13,37);
-                leftChoice.SetBounds(12,56,Math.Max(120,half-25),28);
-                rightChoice.SetBounds(half+12,56,Math.Max(120,half-25),28);
+                if(separate){
+                    leftFile.SetBounds(12,36,Math.Min(170,Math.Max(120,half-25)),25);
+                    rightFile.SetBounds(half+12,36,Math.Min(170,Math.Max(120,half-25)),25);
+                }
+                int labelY=separate?69:37;
+                int choiceY=separate?88:56;
+                leftLabel.Location=new Point(13,labelY);
+                rightLabel.Location=new Point(half+13,labelY);
+                leftChoice.SetBounds(12,choiceY,Math.Max(120,half-25),28);
+                rightChoice.SetBounds(half+12,choiceY,Math.Max(120,half-25),28);
+                int desiredHeight=separate?123:91;
+                if(toolbar.Height!=desiredHeight)toolbar.Height=desiredHeight;
             };
             toolbar.Resize+=delegate{layoutToolbar();};layoutToolbar();
             Tracker leftSource=tracker,rightSource=tracker;
