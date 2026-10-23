@@ -1498,8 +1498,16 @@ namespace BlightfallPopsDesktop {
                     int iconSize=Math.Max(18,Math.Min(23,settings.IconSize));
                     int secondX=Math.Max(165,width/2-6);
                     int totalX=Math.Max(secondX+80,width-96);
+                    var compareAuras=VisibleCustomAuras(e,true);
                     int statusCount=(settings.ShowSoulReaper?1:0)+(settings.ShowScythe?1:0);
-                    int statusX=width-9-statusCount*iconSize-Math.Max(0,statusCount-1)*3;
+                    int auraSlots=compareAuras.Count;
+                    int statusX=width-9-(statusCount+auraSlots)*iconSize-Math.Max(0,statusCount+auraSlots-1)*3;
+                    // Keep the VP damage value readable even with many configured auras.
+                    int vpTextStart=secondX+iconSize+4;
+                    int safeIconStart=Math.Max(vpTextStart+46,statusX);
+                    int availableSlots=Math.Max(0,(width-9-safeIconStart+3)/(iconSize+3));
+                    int customSlots=Math.Min(auraSlots,Math.Max(0,availableSlots-statusCount));
+                    statusX=width-9-(statusCount+customSlots)*iconSize-Math.Max(0,statusCount+customSlots-1)*3;
                     var bf=SpellIcon("BF",9,9,36);
                     card.Controls.Add(bf);
                     var title=Label("#"+index+"  "+e.Time.ToString("HH:mm:ss"),Color.White,52,1,
@@ -1517,7 +1525,7 @@ namespace BlightfallPopsDesktop {
                     var dpValue=Label(Format(e.Dread),e.Hits.Exists(h=>h.Kind=="DP"&&h.Crit)?Color.Gold:dim,
                         55+iconSize+4,28,Math.Max(30,secondX-55-iconSize-8));
                     var vpValue=Label(Format(e.Virulent),VirulentDamageColor(e),
-                        secondX+iconSize+4,28,Math.Max(16,(statusCount>0?statusX:width-7)-secondX-iconSize-8));
+                        secondX+iconSize+4,28,Math.Max(16,(statusCount+customSlots>0?statusX:width-7)-secondX-iconSize-8));
                     card.Controls.Add(dpValue);card.Controls.Add(vpValue);
                     // Use the same status icons, activity indicators, and tooltips as main compact cards.
                     if(settings.ShowSoulReaper)
@@ -1526,14 +1534,66 @@ namespace BlightfallPopsDesktop {
                         string scTip="Festering Scythe: "+(e.Scythe.HasValue?(e.Scythe.Value?"active":"inactive"):"unknown");
                         card.Controls.Add(SpellIcon("SC",statusX+(statusCount-1)*(iconSize+3),29,iconSize,scTip,e.Scythe));
                     }
+                    for(int ai=0;ai<customSlots;ai++){
+                        int ax=statusX+(statusCount+ai)*(iconSize+3);
+                        card.Controls.Add(CustomAuraIcon(compareAuras[ai],ax,29,iconSize));
+                    }
                     var details=new Panel{Visible=false,BackColor=Color.FromArgb(27,31,36),
                         Location=new Point(5,55),Width=Math.Max(60,width-10)};
                     int y=5;
                     foreach(var hit in e.Hits){
-                        var line=new Label{Text=hit.Kind+"   "+Format(hit.Amount)+(hit.Crit?"   CRIT":"")+"   "+(hit.Target??""),
-                            ForeColor=hit.Crit?Color.Gold:dim,Font=LabelFont(hit.Crit),
-                            Bounds=new Rectangle(8,y,Math.Max(40,width-28),24),AutoEllipsis=true};
-                        details.Controls.Add(line);y+=25;
+                        int hitSize=Math.Min(32,Math.Max(23,settings.IconSize));
+                        int rowWidth=Math.Max(70,width-20);
+                        var hitRow=new BufferedPanel{Left=4,Top=y,Width=rowWidth,Height=hitSize+6,
+                            BackColor=Color.FromArgb(23,28,33)};
+                        hitRow.Controls.Add(SpellIcon(hit.Kind,7,3,hitSize));
+                        string amount=Format(hit.Amount);
+                        string target=String.IsNullOrWhiteSpace(hit.Target)?"Unknown target":hit.Target;
+                        string result=hit.Crit?"Crit":"Hit";
+                        int amountX=13+hitSize;
+                        using(var regular=new Font("Segoe UI",settings.TextSize))
+                        using(var bold=new Font("Segoe UI",settings.TextSize,FontStyle.Bold)){
+                            int amountWidth=TextRenderer.MeasureText(amount,regular).Width+6;
+                            int critWidth=TextRenderer.MeasureText(result,bold).Width+6;
+                            int critX=amountX+amountWidth+6;
+                            int targetX=critX+critWidth+8;
+                            int targetWidth=Math.Max(20,rowWidth-targetX-8);
+                            int nameWidth=TextRenderer.MeasureText(target,regular).Width;
+                            var debuffs=HitDebuffIcons(hit,true);
+                            int auraSize=Math.Max(18,Math.Min(26,settings.IconSize));
+                            int auraWidth=debuffs.Count*(auraSize+3);
+                            hitRow.Controls.Add(Label(amount,hit.Crit?Color.Gold:dim,amountX,5,amountWidth));
+                            hitRow.Controls.Add(Label(result,hit.Crit?Color.Gold:dim,critX,5,critWidth,true));
+                            int auraX=targetX+nameWidth+5,auraY=5;
+                            Label targetLabel;
+                            if(nameWidth>targetWidth){
+                                int wrapWidth=Math.Max(25,rowWidth-amountX-8);
+                                int wrapHeight=Math.Max(20,TextRenderer.MeasureText(target,regular,
+                                    new Size(wrapWidth,int.MaxValue),TextFormatFlags.WordBreak).Height);
+                                targetLabel=Label(target,dim,amountX,hitSize+6,wrapWidth);
+                                targetLabel.AutoEllipsis=false;targetLabel.Height=wrapHeight+3;
+                                hitRow.Height=hitSize+9+wrapHeight+3;
+                                auraX=amountX;auraY=hitRow.Height+2;
+                            }else{
+                                targetLabel=Label(target,dim,targetX,5,Math.Min(targetWidth,nameWidth+2));
+                                if(auraX+auraWidth>rowWidth-5){auraX=amountX;auraY=hitRow.Height+2;}
+                            }
+                            hitRow.Controls.Add(targetLabel);
+                            toolTip.SetToolTip(targetLabel,target);
+                            foreach(var aura in debuffs){
+                                if(auraX+auraSize>rowWidth-6){auraX=amountX;auraY+=auraSize+3;}
+                                hitRow.Controls.Add(CustomAuraIcon(aura,auraX,auraY,auraSize));
+                                auraX+=auraSize+3;
+                            }
+                            if(debuffs.Count>0&&auraY>5)hitRow.Height=Math.Max(hitRow.Height,auraY+auraSize+3);
+                            if(settings.ShowOverkill&&hit.Overkill>0){
+                                var overkill=Label("Overkill: "+Format(hit.Overkill),dim,amountX,hitRow.Height,rowWidth-amountX-8);
+                                hitRow.Controls.Add(overkill);hitRow.Height+=25;
+                            }
+                        }
+                        if(hit.Crit)hitRow.Controls.Add(new Panel{Left=1,Top=3,Width=2,
+                            Height=Math.Max(2,hitRow.Height-6),BackColor=Color.Gold});
+                        details.Controls.Add(hitRow);y+=hitRow.Height+2;
                     }
                     if(e.Hits.Count==0){
                         details.Controls.Add(new Label{Text="No recorded hits",ForeColor=dim,
