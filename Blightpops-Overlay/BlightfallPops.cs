@@ -844,7 +844,7 @@ namespace BlightfallPopsDesktop {
                 definitions.Add(new CustomCard{Name="Blood Beast (built-in)",SpellId="434237"});
             var card=new CustomCard();
             var editor=new Form{Text="Blightfall Pops — Event Card Builder",Size=new Size(1060,650),MinimumSize=new Size(790,480),
-                StartPosition=FormStartPosition.CenterParent,BackColor=background,ForeColor=Color.White,FormBorderStyle=FormBorderStyle.None,ShowIcon=false};
+                StartPosition=FormStartPosition.CenterScreen,BackColor=background,ForeColor=Color.White,FormBorderStyle=FormBorderStyle.None,ShowIcon=false,ShowInTaskbar=true};
             var titleBar=new Panel{Dock=DockStyle.Top,Height=33,BackColor=Color.FromArgb(10,11,13)};
             var heading=new Label{Text="BLIGHTFALL POPS  /  EVENT CARD BUILDER",ForeColor=Color.FromArgb(222,224,218),
                 Font=new Font("Segoe UI",9,FontStyle.Bold),TextAlign=ContentAlignment.MiddleLeft,Dock=DockStyle.Fill};
@@ -1350,15 +1350,16 @@ namespace BlightfallPopsDesktop {
                     updateLeftScroll();
                 });
             };
-            editor.Show(this);
+            // Independent top-level window: minimizing the overlay must not minimize the builder.
+            editor.Show();
         }
 
         private void ShowCompareWindow(){
             var identities=CompareIdentities(tracker);
             // A single player can still compare against another combat log.
             var compare=new Form{Text="Blightfall Pops — Compare players",Size=new Size(1120,720),
-                StartPosition=FormStartPosition.CenterParent,BackColor=background,ForeColor=Color.White,
-                MinimumSize=new Size(740,420),FormBorderStyle=FormBorderStyle.None,ShowIcon=false};
+                StartPosition=FormStartPosition.CenterScreen,BackColor=background,ForeColor=Color.White,
+                MinimumSize=new Size(740,420),FormBorderStyle=FormBorderStyle.None,ShowIcon=false,ShowInTaskbar=true};
             var toolbar=new Panel{Dock=DockStyle.Top,Height=91,BackColor=Color.FromArgb(28,32,37)};
             var leftChoice=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,DrawMode=DrawMode.OwnerDrawFixed,
                 ItemHeight=25,Width=290,BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White,
@@ -1755,7 +1756,8 @@ namespace BlightfallPopsDesktop {
                 if(compareResizeStart.HasValue&&!compareGrip.Capture)endCompareResize(false);
             };
             compare.FormClosing+=delegate{endCompareResize(false);};
-            compare.Show(this);
+            // Independent top-level window: minimizing the overlay must not minimize Compare.
+            compare.Show();
         }
         private void ShowPlayerMenu(){
             var menu=new ContextMenuStrip{BackColor=Color.FromArgb(30,33,37),ForeColor=Color.White,ShowImageMargin=false};
