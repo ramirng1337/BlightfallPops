@@ -11,7 +11,7 @@ using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
 namespace BlightfallPopsDesktop {
-    internal sealed class Hit { public string Kind, Target; public long Amount, Overkill; public bool Crit; }
+    internal sealed class Hit { public string Kind, Target, TargetGuid; public long Amount, Overkill; public bool Crit; public readonly List<AuraSnapshot> Debuffs=new List<AuraSnapshot>(); }
     internal sealed class AuraSnapshot { public string Name, SpellId, IconPath; public bool? Active; public int Stacks; public bool HasDose; }
     internal sealed class Entry {
         public readonly List<AuraSnapshot> AuraSnapshots=new List<AuraSnapshot>();
@@ -126,6 +126,18 @@ namespace BlightfallPopsDesktop {
                 // The aura stack amount is immediately after the spell's aura type.
                 int amount; if(int.TryParse(F(fields,13),NumberStyles.Integer,CultureInfo.InvariantCulture,out amount)){
                     state.Active=amount>0;state.Stacks=Math.Max(0,amount);state.HasDose=true;
+                }
+            }
+        }
+        private void SnapshotHitDebuffs(Hit hit,string targetGuid){
+            foreach(var watched in WatchedAuras){
+                if(watched.Value!="Debuff")continue;
+                AuraState state;
+                if(!auraStates.TryGetValue(AuraKey(targetGuid,watched.Key),out state)){
+                    hit.Debuffs.Add(new AuraSnapshot{SpellId=watched.Key,Active=null});
+                }else{
+                    hit.Debuffs.Add(new AuraSnapshot{SpellId=watched.Key,Active=state.Active,
+                        Stacks=state.Stacks,HasDose=state.HasDose});
                 }
             }
         }
@@ -329,7 +341,8 @@ namespace BlightfallPopsDesktop {
             if(spell!="1241171"&&spell!="1241167")return;
             long damage=Amount(f);string plague=spell=="1241171"?"DP":"VP";
             if(plague=="DP")eruption.Dread+=damage;else eruption.Virulent+=damage;
-            eruption.Hits.Add(new Hit{Kind=plague,Amount=damage,Overkill=Overkill(f),Target=F(f,6),Crit=Crit(f)});
+            var hit=new Hit{Kind=plague,Amount=damage,Overkill=Overkill(f),Target=F(f,6),TargetGuid=dest,Crit=Crit(f)};
+            SnapshotHitDebuffs(hit,dest);eruption.Hits.Add(hit);
             if(source!=Guid||pending==null)Notify();
         }
     }
@@ -1811,6 +1824,17 @@ namespace BlightfallPopsDesktop {
                     int wrapped=TextRenderer.MeasureText(target,LabelFont(false),new Size(Math.Max(25,rowWidth-amountX-8),int.MaxValue),TextFormatFlags.WordBreak).Height;
                     height=size+12+Math.Max(TextRenderer.MeasureText("Ag",LabelFont(false)).Height,wrapped);
                 }
+                var debuffs=HitDebuffIcons(hit,mini);
+                if(debuffs.Count>0){
+                    int auraSize=Math.Max(18,Math.Min(26,settings.IconSize));
+                    int iconsWidth=debuffs.Count*(auraSize+3);
+                    int targetX=amountX+amountWidth+6+critWidth+8;
+                    int available=Math.Max(20,rowWidth-targetX-8);
+                    if(TextRenderer.MeasureText(target,LabelFont(false)).Width+iconsWidth>available){
+                        int cols=Math.Max(1,(rowWidth-amountX-8)/(auraSize+3));
+                        height+=((debuffs.Count+cols-1)/cols)*(auraSize+3)+5;
+                    }
+                }
                 if(settings.ShowOverkill&&hit.Overkill>0)
                     height+=TextRenderer.MeasureText("Overkill: "+Format(hit.Overkill),LabelFont(false),
                         new Size(Math.Max(25,rowWidth-amountX-8),int.MaxValue),TextFormatFlags.WordBreak).Height+5;
@@ -2070,11 +2094,38 @@ namespace BlightfallPopsDesktop {
                 CustomEffect info;
                 if(!customAuraInfo.TryGetValue(aura.SpellId,out info))continue;
                 if(mini?!info.ShowCompact:!info.ShowDetailed)continue;
+                if(info.Type=="Debuff")continue; // Enemy debuffs belong beside individual hit targets.
                 if(!seen.Add(aura.SpellId))continue;
                 aura.Name=info.Name;aura.IconPath=info.IconPath;
                 result.Add(aura);
             }
             return result;
+        }
+        private List<AuraSnapshot> HitDebuffIcons(Hit hit,bool mini){
+            var result=new List<AuraSnapshot>();
+            var seen=new HashSet<string>(StringComparer.Ordinal);
+            foreach(var aura in hit.Debuffs){
+                CustomEffect info;
+                if(!customAuraInfo.TryGetValue(aura.SpellId,out info)||info.Type!="Debuff")continue;
+                if(mini?!info.ShowCompact:!info.ShowDetailed)continue;
+                if(!seen.Add(aura.SpellId))continue;
+                // Only confirmed active debuffs are drawn. Unknown state is not zero stacks.
+                if(aura.Active!=true)continue;
+                aura.Name=info.Name;aura.IconPath=info.IconPath;
+                result.Add(aura);
+            }
+            return result;
+        }
+        private int HitDebuffExtraHeight(Hit hit,int rowWidth,int targetX,int targetWidth,int iconSize,int lineHeight){
+            var auras=HitDebuffIcons(hit,ShowMiniCards);
+            if(auras.Count==0)return 0;
+            string target=String.IsNullOrWhiteSpace(hit.Target)?"Unknown target":hit.Target;
+            int nameWidth=TextRenderer.MeasureText(target,LabelFont(false)).Width;
+            int iconSpace=auras.Count*(iconSize+3);
+            if(nameWidth+iconSpace<=targetWidth)return 0;
+            int columns=Math.Max(1,(rowWidth-(19+iconSize)-8)/(iconSize+3));
+            int rows=(auras.Count+columns-1)/columns;
+            return rows*(iconSize+3)+3;
         }
         private int DetailedAuraHeight(Entry entry,int width,int iconSize){
             var list=VisibleCustomAuras(entry,false);
@@ -2140,21 +2191,39 @@ namespace BlightfallPopsDesktop {
                     int critX=amountX+amountWidth+6;
                     int targetX=critX+critWidth+8;
                     targetWidth=Math.Max(20,hitRow.Width-targetX-8);
-                    bool wrap=TextRenderer.MeasureText(target,regular).Width>targetWidth;
+                    var debuffs=HitDebuffIcons(hit,ShowMiniCards);
+                    int auraSize=Math.Max(18,Math.Min(26,settings.IconSize));
+                    int auraWidth=debuffs.Count*(auraSize+3);
+                    int nameWidth=TextRenderer.MeasureText(target,regular).Width;
+                    bool wrap=nameWidth>targetWidth;
                     hitRow.Controls.Add(Label(amount,hit.Crit?Color.Gold:dim,amountX,5,amountWidth));
                     hitRow.Controls.Add(Label(result,hit.Crit?Color.Gold:dim,critX,5,critWidth,true));
                     Label targetLabel;
+                    int auraY=5,auraX=targetX;
                     if(wrap){
-                        // Leave damage and the full Crit/Hit label readable on the first line.
                         int wrapX=amountX,wrapWidth=Math.Max(25,hitRow.Width-wrapX-8);
                         int wrapHeight=Math.Max(lineHeight,TextRenderer.MeasureText(target,regular,
                             new Size(wrapWidth,int.MaxValue),TextFormatFlags.WordBreak).Height);
                         targetLabel=Label(target,dim,wrapX,hitSize+6,wrapWidth);
                         targetLabel.AutoEllipsis=false;targetLabel.Height=wrapHeight+3;
                         hitRow.Height=hitSize+9+wrapHeight+3;
-                    }else targetLabel=Label(target,dim,targetX,5,targetWidth);
+                        auraX=wrapX;auraY=hitRow.Height+2;
+                    }else{
+                        targetLabel=Label(target,dim,targetX,5,Math.Min(targetWidth,nameWidth+2));
+                        auraX=targetX+nameWidth+5;
+                        if(auraX+auraWidth>hitRow.Width-5){auraX=amountX;auraY=hitRow.Height+2;}
+                    }
                     hitRow.Controls.Add(targetLabel);
                     toolTip.SetToolTip(targetLabel,target);
+                    if(debuffs.Count>0){
+                        int left=amountX,limit=hitRow.Width-6;
+                        for(int i=0;i<debuffs.Count;i++){
+                            if(auraX+auraSize>limit){auraX=left;auraY+=auraSize+3;}
+                            hitRow.Controls.Add(CustomAuraIcon(debuffs[i],auraX,auraY,auraSize));
+                            auraX+=auraSize+3;
+                        }
+                        if(auraY>5)hitRow.Height=Math.Max(hitRow.Height,auraY+auraSize+3);
+                    }
                     if(settings.ShowOverkill&&hit.Overkill>0){
                         string overkillText="Overkill: "+Format(hit.Overkill);
                         int overkillY=hitRow.Height,available=Math.Max(25,hitRow.Width-amountX-8);
