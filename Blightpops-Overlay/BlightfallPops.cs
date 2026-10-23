@@ -687,11 +687,11 @@ namespace BlightfallPopsDesktop {
             leftTrack.Controls.Add(leftThumb);
             split.Panel1.Controls.Add(left);left.Controls.Add(leftTrack);
             var form=new TableLayoutPanel{AutoSize=false,ColumnCount=2,RowCount=1,
-                Location=new Point(12,12),Padding=new Padding(0,0,6,12),BackColor=left.BackColor};
+                Location=new Point(12,8),Padding=new Padding(0,0,6,4),BackColor=left.BackColor};
             form.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
             form.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
-            var eventFields=new TableLayoutPanel{AutoSize=true,AutoSizeMode=AutoSizeMode.GrowAndShrink,ColumnCount=1,Dock=DockStyle.Top,Margin=new Padding(0,0,9,0)};
-            var effectFields=new TableLayoutPanel{AutoSize=true,AutoSizeMode=AutoSizeMode.GrowAndShrink,ColumnCount=1,Dock=DockStyle.Top,Margin=new Padding(9,0,0,0)};
+            var eventFields=new TableLayoutPanel{AutoSize=true,AutoSizeMode=AutoSizeMode.GrowAndShrink,ColumnCount=1,RowCount=0,Dock=DockStyle.Top,Margin=new Padding(0,0,9,0)};
+            var effectFields=new TableLayoutPanel{AutoSize=true,AutoSizeMode=AutoSizeMode.GrowAndShrink,ColumnCount=1,RowCount=0,Dock=DockStyle.Top,Margin=new Padding(9,0,0,0)};
             eventFields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
             effectFields.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
             form.Controls.Add(eventFields,0,0);form.Controls.Add(effectFields,1,0);
@@ -699,13 +699,13 @@ namespace BlightfallPopsDesktop {
             int leftScroll=0;bool thumbDragging=false;int thumbDragY=0,thumbDragOffset=0;
             Action updateLeftScroll=delegate{
                 int viewport=Math.Max(1,left.ClientSize.Height);
-                int extent=Math.Max(0,form.Height+24-viewport);
+                int extent=Math.Max(0,form.Height+12-viewport);
                 leftScroll=Math.Max(0,Math.Min(extent,leftScroll));
-                form.Location=new Point(14,12-leftScroll);
+                form.Location=new Point(14,8-leftScroll);
                 leftTrack.Visible=extent>0;
                 if(extent==0)return;
                 int trackHeight=Math.Max(1,leftTrack.ClientSize.Height);
-                int thumbHeight=Math.Min(trackHeight,Math.Max(28,(int)((long)trackHeight*viewport/Math.Max(viewport,form.Height+24))));
+                int thumbHeight=Math.Min(trackHeight,Math.Max(28,(int)((long)trackHeight*viewport/Math.Max(viewport,form.Height+12))));
                 leftThumb.Bounds=new Rectangle(1,(int)((long)leftScroll*(trackHeight-thumbHeight)/Math.Max(1,extent)),6,thumbHeight);
             };
             Action layoutLeft=delegate{
@@ -714,7 +714,7 @@ namespace BlightfallPopsDesktop {
                 int half=Math.Max(145,(w-6)/2);
                 eventFields.Width=half;effectFields.Width=half;
                 eventFields.PerformLayout();effectFields.PerformLayout();
-                form.Height=Math.Max(eventFields.Height,effectFields.Height)+24;
+                form.Height=Math.Max(eventFields.Height,effectFields.Height)+8;
                 form.PerformLayout();
                 updateLeftScroll();
             };
@@ -723,20 +723,33 @@ namespace BlightfallPopsDesktop {
             left.MouseWheel+=leftWheel;form.MouseWheel+=leftWheel;leftTrack.MouseWheel+=leftWheel;leftThumb.MouseWheel+=leftWheel;
             leftTrack.MouseDown+=delegate(object sender,MouseEventArgs e){if(e.Button==MouseButtons.Left){leftScroll+=(e.Y<leftThumb.Top?-1:1)*Math.Max(60,left.Height-60);updateLeftScroll();}};
             leftThumb.MouseDown+=delegate(object sender,MouseEventArgs e){if(e.Button==MouseButtons.Left){thumbDragging=true;thumbDragY=Cursor.Position.Y;thumbDragOffset=leftScroll;leftThumb.Capture=true;}};
-            leftThumb.MouseMove+=delegate{if(thumbDragging){int extent=Math.Max(0,form.Height+24-left.Height);int travel=Math.Max(1,leftTrack.Height-leftThumb.Height);leftScroll=thumbDragOffset+(Cursor.Position.Y-thumbDragY)*extent/travel;updateLeftScroll();}};
+            leftThumb.MouseMove+=delegate{if(thumbDragging){int extent=Math.Max(0,form.Height+12-left.Height);int travel=Math.Max(1,leftTrack.Height-leftThumb.Height);leftScroll=thumbDragOffset+(Cursor.Position.Y-thumbDragY)*extent/travel;updateLeftScroll();}};
             leftThumb.MouseUp+=delegate{thumbDragging=false;leftThumb.Capture=false;};
             leftThumb.MouseCaptureChanged+=delegate{thumbDragging=false;};
             TableLayoutPanel activeFields=eventFields;
+            // Explicit compact row heights avoid the large gaps created by AutoSize
+            // TableLayoutPanel rows. Empty captions are actions, not empty label rows.
             Action<string,Control> addField=delegate(string caption,Control control){
-                var label=BuilderLabel(caption);label.Dock=DockStyle.Fill;label.Margin=new Padding(0,0,0,3);activeFields.Controls.Add(label);
-                control.Dock=DockStyle.Fill;control.Margin=new Padding(0,0,0,9);activeFields.Controls.Add(control);
+                if(!String.IsNullOrEmpty(caption)){
+                    var label=BuilderLabel(caption);
+                    label.Dock=DockStyle.Fill;label.Margin=new Padding(0);
+                    int row=activeFields.RowCount++;
+                    activeFields.RowStyles.Add(new RowStyle(SizeType.Absolute,20));
+                    activeFields.Controls.Add(label,0,row);
+                }
+                int controlHeight=control is ListBox?78:control is ComboBox?27:control is Button?29:26;
+                control.Dock=DockStyle.Fill;
+                control.Margin=new Padding(0,0,0,4);
+                int fieldRow=activeFields.RowCount++;
+                activeFields.RowStyles.Add(new RowStyle(SizeType.Absolute,controlHeight+4));
+                activeFields.Controls.Add(control,0,fieldRow);
             };
             var presets=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White,Height=29};
             var name=BuilderText(card.Name);var spell=BuilderText(card.SpellId);
             var imageButton=BuilderButton("Choose main icon image...");
             var clearImage=BuilderButton("Use Spell ID / default icon");
             var addEffect=BuilderButton("+ Add buff / debuff");
-            var effects=new ListBox{Height=88,BackColor=Color.FromArgb(35,40,47),ForeColor=Color.White,BorderStyle=BorderStyle.FixedSingle};
+            var effects=new ListBox{Height=78,BackColor=Color.FromArgb(35,40,47),ForeColor=Color.White,BorderStyle=BorderStyle.FixedSingle};
             var effectName=BuilderText("");var effectSpell=BuilderText("");
             var effectType=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White};
             effectType.Items.AddRange(new object[]{"Buff","Debuff"});
@@ -889,10 +902,65 @@ namespace BlightfallPopsDesktop {
             editor.Controls.Add(grip);grip.BringToFront();
             Action placeGrip=delegate{grip.Location=new Point(editor.ClientSize.Width-19,editor.ClientSize.Height-19);};
             editor.Resize+=delegate{placeGrip();};placeGrip();
-            Point? resizeAt=null;Size original=Size.Empty;
-            grip.MouseDown+=delegate(object sender,MouseEventArgs e){if(e.Button==MouseButtons.Left){resizeAt=Control.MousePosition;original=editor.Size;}};
-            grip.MouseMove+=delegate{if(resizeAt.HasValue){Point pt=Control.MousePosition;editor.Size=new Size(Math.Max(editor.MinimumSize.Width,original.Width+pt.X-resizeAt.Value.X),Math.Max(editor.MinimumSize.Height,original.Height+pt.Y-resizeAt.Value.Y));}};
-            grip.MouseUp+=delegate{resizeAt=null;};
+            // Compare Mode style resize preview: the real WinForms controls stay
+            // stationary during the drag, so textboxes and dropdowns never jitter.
+            Point? resizeAt=null;Size original=Size.Empty,resizeCandidate=Size.Empty;
+            ResizeOutline resizeOutline=null;
+            PaintEventHandler paintBuilderGrid=delegate(object sender,PaintEventArgs e){
+                var size=resizeCandidate;
+                e.Graphics.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                using(var pen=new Pen(green,1.5f)){
+                    pen.DashStyle=System.Drawing.Drawing2D.DashStyle.Dash;
+                    e.Graphics.DrawRectangle(pen,1,1,Math.Max(1,size.Width-3),Math.Max(1,size.Height-3));
+                    TextRenderer.DrawText(e.Graphics,size.Width+" × "+size.Height+"  ·  Card Builder layout",
+                        LabelFont(true),new Rectangle(12,8,Math.Max(1,size.Width-24),24),green,
+                        TextFormatFlags.NoPrefix|TextFormatFlags.EndEllipsis);
+                    int bodyTop=titleBar.Height+6,bodyBottom=size.Height-footer.Height-6;
+                    int available=Math.Max(1,size.Width-10);
+                    int divider=(int)(available*0.59);
+                    int leftX=8,rightX=divider+12;
+                    int leftWidth=Math.Max(1,divider-14),rightWidth=Math.Max(1,size.Width-rightX-10);
+                    e.Graphics.DrawRectangle(pen,leftX,bodyTop,leftWidth,Math.Max(1,bodyBottom-bodyTop));
+                    e.Graphics.DrawRectangle(pen,rightX,bodyTop,rightWidth,Math.Max(1,bodyBottom-bodyTop));
+                    int colW=Math.Max(1,(leftWidth-26)/2);
+                    for(int column=0;column<2;column++){
+                        int x=leftX+8+column*(colW+10);
+                        int y=bodyTop+12;
+                        int[] heights=column==0?new[]{27,26,26,29,29}:new[]{78,29,26,26,27,27,29,29,29};
+                        foreach(int h in heights){
+                            if(y+h>bodyBottom-8)break;
+                            e.Graphics.DrawRectangle(pen,x,y,colW,Math.Max(1,h));y+=h+8;
+                        }
+                    }
+                    if(rightWidth>32)e.Graphics.DrawRectangle(pen,rightX+12,bodyTop+12,Math.Max(1,rightWidth-24),94);
+                    e.Graphics.DrawRectangle(pen,Math.Max(1,size.Width-147),Math.Max(1,size.Height-43),130,29);
+                }
+            };
+            Action stopBuilderResize=delegate{
+                if(!resizeAt.HasValue)return;
+                resizeAt=null;
+                if(resizeOutline!=null){resizeOutline.Hide();resizeOutline.Dispose();resizeOutline=null;}
+                if(editor.Size!=resizeCandidate)editor.Size=resizeCandidate;
+                layoutLeft();layoutPreview();
+            };
+            grip.MouseDown+=delegate(object sender,MouseEventArgs e){
+                if(e.Button!=MouseButtons.Left)return;
+                resizeAt=Control.MousePosition;original=editor.Size;resizeCandidate=original;
+                resizeOutline=new ResizeOutline{Bounds=new Rectangle(editor.Location,original)};
+                resizeOutline.Paint+=paintBuilderGrid;
+                resizeOutline.Show(editor);
+                grip.Capture=true;
+            };
+            grip.MouseMove+=delegate{
+                if(!resizeAt.HasValue||resizeOutline==null)return;
+                Point pt=Control.MousePosition;
+                resizeCandidate=new Size(Math.Max(editor.MinimumSize.Width,original.Width+pt.X-resizeAt.Value.X),
+                    Math.Max(editor.MinimumSize.Height,original.Height+pt.Y-resizeAt.Value.Y));
+                resizeOutline.Bounds=new Rectangle(editor.Location,resizeCandidate);
+                resizeOutline.Invalidate();
+            };
+            grip.MouseUp+=delegate(object sender,MouseEventArgs e){if(e.Button==MouseButtons.Left)stopBuilderResize();};
+            editor.FormClosing+=delegate{if(resizeOutline!=null){resizeOutline.Dispose();resizeOutline=null;}resizeAt=null;};
             editor.FormClosed+=delegate{foreach(var img in ownedImages)img.Dispose();};
             fillPresets();presets.SelectedIndex=0;fillEffects();
             editor.Shown+=delegate{
