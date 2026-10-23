@@ -1400,14 +1400,65 @@ namespace BlightfallPopsDesktop {
             var rightFile=new Button{Text="Choose log 2...",FlatStyle=FlatStyle.Flat,BackColor=Color.FromArgb(39,44,51),
                 ForeColor=Color.White,Font=new Font("Segoe UI",9),Visible=false};
             leftFile.FlatAppearance.BorderColor=rightFile.FlatAppearance.BorderColor=Color.FromArgb(70,80,84);
+            // Searchable event-card library. Only implemented tracker types can be selected.
+            // Custom Spell IDs are shown as unavailable rather than silently producing fake matches.
+            var compareEventsButton=BuilderButton("Event cards: Blightfall");
+            compareEventsButton.Width=188;
+            bool compareBlightfallEnabled=true;
+            Action refreshEventSelection=null;
+            compareEventsButton.Click+=delegate{
+                using(var chooser=new Form{Text="Compare / Event Card Library",Size=new Size(440,510),
+                    MinimumSize=new Size(360,360),StartPosition=FormStartPosition.CenterParent,
+                    BackColor=Color.FromArgb(24,28,34),ForeColor=Color.White,ShowInTaskbar=false}){
+                    var search=BuilderText("");search.Dock=DockStyle.Top;
+                    var list=new CheckedListBox{Dock=DockStyle.Fill,CheckOnClick=true,
+                        BackColor=Color.FromArgb(35,40,47),ForeColor=Color.White,
+                        BorderStyle=BorderStyle.None,Font=new Font("Segoe UI",10)};
+                    var footer=new Label{Dock=DockStyle.Bottom,Height=56,
+                        ForeColor=Color.FromArgb(180,185,190),
+                        Text="Only Blightfall is supported by the Compare renderer currently.\nOther saved cards are listed for reference.",
+                        Padding=new Padding(8)};
+                    var done=BuilderButton("Apply selection");done.Dock=DockStyle.Bottom;
+                    var choices=new List<CustomCard>();
+                    choices.Add(new CustomCard{Name="Blightfall (built-in)",SpellId="1271974"});
+                    foreach(var saved in ReadCustomCards())if(saved!=null&&saved.SpellId!="1271974")choices.Add(saved);
+                    Action refill=delegate{
+                        list.Items.Clear();
+                        foreach(var c in choices){
+                            string name=c.Name+" ["+c.SpellId+"]";
+                            if(name.IndexOf(search.Text,StringComparison.OrdinalIgnoreCase)<0)continue;
+                            bool supported=c.SpellId=="1271974"||c.SpellId=="1271967";
+                            int ix=list.Items.Add((supported?"":"[Tracker not implemented] ")+name);
+                            if(supported)list.SetItemChecked(ix,compareBlightfallEnabled);
+                        }
+                    };
+                    search.TextChanged+=delegate{refill();};refill();
+                    list.ItemCheck+=delegate(object sender,ItemCheckEventArgs args){
+                        string item=list.Items[args.Index].ToString();
+                        if(item.StartsWith("[Tracker not implemented] "))args.NewValue=CheckState.Unchecked;
+                    };
+                    done.Click+=delegate{
+                        bool enabled=false;
+                        for(int i=0;i<list.Items.Count;i++)if(list.GetItemChecked(i)&&
+                            !list.Items[i].ToString().StartsWith("[Tracker not implemented] "))enabled=true;
+                        compareBlightfallEnabled=enabled;
+                        compareEventsButton.Text=enabled?"Event cards: Blightfall":"Event cards: None";
+                        chooser.Close();
+                        if(refreshEventSelection!=null)refreshEventSelection();
+                    };
+                    chooser.Controls.Add(list);chooser.Controls.Add(done);chooser.Controls.Add(footer);chooser.Controls.Add(search);
+                    chooser.ShowDialog(compare);
+                }
+            };
             var leftLabel=new Label{Text="PLAYER 1",ForeColor=dim,Font=new Font("Segoe UI",9,FontStyle.Bold),AutoSize=true};
             var rightLabel=new Label{Text="PLAYER 2",ForeColor=dim,Font=new Font("Segoe UI",9,FontStyle.Bold),AutoSize=true};
-            toolbar.Controls.AddRange(new Control[]{leftLabel,rightLabel,leftChoice,rightChoice,mode,leftFile,rightFile});
+            toolbar.Controls.AddRange(new Control[]{leftLabel,rightLabel,leftChoice,rightChoice,mode,leftFile,rightFile,compareEventsButton});
             Action layoutToolbar=delegate{
                 int half=toolbar.ClientSize.Width/2;
                 mode.SetBounds(12,4,Math.Min(270,Math.Max(160,half-25)),25);
                 bool separate=mode.SelectedIndex==1;
                 leftFile.Visible=rightFile.Visible=separate;
+                compareEventsButton.SetBounds(Math.Max(285,half-340),4,Math.Min(185,Math.Max(100,half-300)),25);
                 leftFile.SetBounds(half-143,4,130,25);
                 rightFile.SetBounds(toolbar.ClientSize.Width-143,4,130,25);
                 leftLabel.Location=new Point(13,37);rightLabel.Location=new Point(half+13,37);
@@ -1484,7 +1535,7 @@ namespace BlightfallPopsDesktop {
                 // Reuse the complete card tree when neither player, data nor column width changed.
                 // Moving the window and height-only resizing never rebuild controls or icons.
                 int eventCount=0;long lastSequence=-1;
-                foreach(var candidate in source.Entries)if(candidate.PlayerGuid==guid&&!candidate.Beast){
+                foreach(var candidate in source.Entries)if(compareBlightfallEnabled&&candidate.PlayerGuid==guid&&!candidate.Beast){
                     eventCount++;if(candidate.Sequence>lastSequence)lastSequence=candidate.Sequence;
                 }
                 if(Object.ReferenceEquals(column.RenderSource,source)&&column.RenderGuid==guid&&
@@ -1494,7 +1545,7 @@ namespace BlightfallPopsDesktop {
                 panel.SuspendLayout();
                 // Clear() only detaches WinForms controls; dispose old cards to avoid leaking handles.
                 while(panel.Controls.Count>0){Control old=panel.Controls[0];panel.Controls.RemoveAt(0);old.Dispose();}
-                var events=new List<Entry>();foreach(var e in source.Entries)if(e.PlayerGuid==guid&&!e.Beast)events.Add(e);
+                var events=new List<Entry>();foreach(var e in source.Entries)if(compareBlightfallEnabled&&e.PlayerGuid==guid&&!e.Beast)events.Add(e);
                 events.Sort(delegate(Entry a,Entry b){int t=a.Time.CompareTo(b.Time);return t!=0?t:a.Sequence.CompareTo(b.Sequence);});
                 long dread=0,virulent=0;int hits=0;foreach(var e in events){dread+=e.Dread;virulent+=e.Virulent;hits+=e.Hits.Count;}
                 var header=new Panel{Width=width,Height=77,BackColor=Color.FromArgb(28,34,37),Margin=new Padding(2,2,2,8)};
@@ -1646,6 +1697,7 @@ namespace BlightfallPopsDesktop {
                     populate(right,rightSource,rightNames,rightKeys[rightChoice.SelectedIndex]);
                 else {right.InvalidateRender();right.Content.Controls.Clear();right.Content.Height=1;right.UpdateScroll();}
             };
+            refreshEventSelection=delegate{left.InvalidateRender();right.InvalidateRender();refresh();};
             leftChoice.SelectedIndexChanged+=delegate{refresh();};rightChoice.SelectedIndexChanged+=delegate{refresh();};
             mode.SelectedIndexChanged+=delegate{
                 if(mode.SelectedIndex==0){leftSource=rightSource=tracker;
