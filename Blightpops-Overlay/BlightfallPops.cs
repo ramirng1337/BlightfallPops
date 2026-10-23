@@ -450,6 +450,9 @@ namespace BlightfallPopsDesktop {
         private readonly List<Entry> resizeSamples=new List<Entry>();
         private Point dragOrigin;
         private int scrollPixels,totalContentHeight;
+        private readonly Timer smoothScrollTimer=new Timer();
+        private int smoothScrollTarget;
+        private bool smoothScrollTick;
         private bool scrollDragging;
         private int compactHeightBeforeOptions;
         private bool ShowMiniCards {get{return settings.MiniCards;}}
@@ -472,6 +475,19 @@ namespace BlightfallPopsDesktop {
         public Overlay(bool useFrame) {
             framed=useFrame;
             LoadSpellIcons();
+            smoothScrollTimer.Interval=16;
+            smoothScrollTimer.Tick+=delegate {
+                int remaining=smoothScrollTarget-scrollPixels;
+                if(Math.Abs(remaining)<=1){
+                    smoothScrollTick=true;
+                    try{ScrollTo(smoothScrollTarget);}finally{smoothScrollTick=false;}
+                    smoothScrollTimer.Stop();return;
+                }
+                int step=(int)Math.Round(remaining*0.28);
+                if(step==0)step=Math.Sign(remaining);
+                smoothScrollTick=true;
+                try{ScrollTo(scrollPixels+step);}finally{smoothScrollTick=false;}
+            };
             if(framed)try {artwork=Image.FromFile(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"wraith-frame-dark-smooth.png"));}catch{}
             MinimumSize=new Size(340,settings.Collapsed?70:136);Size=new Size(settings.Width,settings.Height);
             StartPosition=FormStartPosition.CenterScreen;
@@ -2141,12 +2157,19 @@ namespace BlightfallPopsDesktop {
                 }
             }
         }
-        private void ScrollWheel(object sender,MouseEventArgs e){ScrollTo(scrollPixels-Math.Sign(e.Delta)*Math.Max(28,settings.TextSize*3));}
+        private void ScrollWheel(object sender,MouseEventArgs e){
+            int max=Math.Max(0,totalContentHeight-cards.ClientSize.Height);
+            int delta=-Math.Sign(e.Delta)*Math.Max(45,settings.TextSize*4);
+            if(!smoothScrollTimer.Enabled)smoothScrollTarget=scrollPixels;
+            smoothScrollTarget=Math.Max(0,Math.Min(max,smoothScrollTarget+delta));
+            if(smoothScrollTarget!=scrollPixels)smoothScrollTimer.Start();
+        }
         private void HookWheel(Control control){control.MouseWheel+=ScrollWheel;foreach(Control child in control.Controls)HookWheel(child);}
         private void ScrollTo(int pixels){
             int next=Math.Max(0,Math.Min(pixels,Math.Max(0,totalContentHeight-cards.ClientSize.Height)));
             bool changed=next!=scrollPixels;
             scrollPixels=next;
+            if(!smoothScrollTick){smoothScrollTimer.Stop();smoothScrollTarget=next;}
             // Never leave hundreds of off-screen child controls visible. WinForms can
             // otherwise leave stale child pixels while moving controls during scrolling.
             cards.SuspendLayout();
@@ -2170,7 +2193,7 @@ namespace BlightfallPopsDesktop {
                     }
                 }
             }
-            if(changed)cards.Invalidate(true);
+            if(changed)cards.Invalidate();
         }
         private void ScrollFromTrack(int y){
             if(scrollTrack.Height<=0)return;
