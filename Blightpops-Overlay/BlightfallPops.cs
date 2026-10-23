@@ -532,7 +532,7 @@ namespace BlightfallPopsDesktop {
                     ScrollTo(Math.Max(0,totalContentHeight-cards.ClientSize.Height));
             };Move+=delegate {if(Visible&&WindowState==FormWindowState.Normal)Save();};
             FormClosing+=delegate {EndResizePreview(false);Save();poll.Stop();toolTip.Dispose();if(artwork!=null)artwork.Dispose();foreach(var image in spellIcons.Values)image.Dispose();foreach(var font in labelFonts.Values)font.Dispose();};
-            try{foreach(var custom in ReadCustomCards())if(custom.SpellId=="1271967")foreach(var effect in custom.Effects)
+            try{foreach(var custom in ReadCustomCards())if((custom.SpellId=="1271967"||custom.SpellId=="1271974"))foreach(var effect in custom.Effects)
                 if(!String.IsNullOrWhiteSpace(effect.SpellId)){tracker.WatchedAuras[effect.SpellId.Trim()]=effect.Type;customAuraInfo[effect.SpellId.Trim()]=effect;}}catch{}
             tracker.WindowMs=settings.WindowMs;tracker.TrackAllPlayers=true;tracker.Changed+=delegate {dirty=true;};
             poll.Interval=350;poll.Tick+=delegate {if(resizeStart.HasValue)return;
@@ -691,6 +691,12 @@ namespace BlightfallPopsDesktop {
         }
         private void ShowEventCardBuilder(){
             var definitions=ReadCustomCards();
+            // Offer the existing built-in event types as editable presets, without
+            // overwriting user-created cards or silently writing to disk.
+            if(!definitions.Exists(c=>c.SpellId=="1271974"||c.SpellId=="1271967"))
+                definitions.Insert(0,new CustomCard{Name="Blightfall (built-in)",SpellId="1271974"});
+            if(!definitions.Exists(c=>c.SpellId=="434237"))
+                definitions.Add(new CustomCard{Name="Blood Beast (built-in)",SpellId="434237"});
             var card=new CustomCard();
             var editor=new Form{Text="Blightfall Pops — Event Card Builder",Size=new Size(1060,650),MinimumSize=new Size(790,480),
                 StartPosition=FormStartPosition.CenterParent,BackColor=background,ForeColor=Color.White,FormBorderStyle=FormBorderStyle.None,ShowIcon=false};
@@ -778,7 +784,7 @@ namespace BlightfallPopsDesktop {
                     activeFields.RowStyles.Add(new RowStyle(SizeType.Absolute,20));
                     activeFields.Controls.Add(label,0,row);
                 }
-                int controlHeight=control is ListBox?78:control is ComboBox?27:control is Button?29:26;
+                int controlHeight=control is ListBox||control is TableLayoutPanel?94:control is ComboBox?27:control is Button?29:26;
                 control.Dock=DockStyle.Fill;
                 control.Margin=new Padding(0,0,0,4);
                 int fieldRow=activeFields.RowCount++;
@@ -790,7 +796,30 @@ namespace BlightfallPopsDesktop {
             var imageButton=BuilderButton("Choose main icon image...");
             var clearImage=BuilderButton("Use Spell ID / default icon");
             var addEffect=BuilderButton("+ Add buff / debuff");
-            var effects=new ListBox{Height=78,BackColor=Color.FromArgb(35,40,47),ForeColor=Color.White,BorderStyle=BorderStyle.FixedSingle};
+            // Separate buff/debuff selectors; the hidden master list preserves the
+            // existing editing and save logic, including its selected index.
+            var effects=new ListBox();
+            var buffList=new ListBox{Dock=DockStyle.Fill,BackColor=Color.FromArgb(35,40,47),ForeColor=Color.White,BorderStyle=BorderStyle.FixedSingle,IntegralHeight=false};
+            var debuffList=new ListBox{Dock=DockStyle.Fill,BackColor=Color.FromArgb(35,40,47),ForeColor=Color.White,BorderStyle=BorderStyle.FixedSingle,IntegralHeight=false};
+            var effectLists=new TableLayoutPanel{ColumnCount=2,RowCount=2,Margin=Padding.Empty,Padding=Padding.Empty,BackColor=Color.FromArgb(25,29,34)};
+            effectLists.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
+            effectLists.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
+            effectLists.RowStyles.Add(new RowStyle(SizeType.Absolute,18));
+            effectLists.RowStyles.Add(new RowStyle(SizeType.Percent,100));
+            effectLists.Controls.Add(new Label{Text="BUFFS",ForeColor=dim,Dock=DockStyle.Fill,Font=new Font("Segoe UI",8,FontStyle.Bold)},0,0);
+            effectLists.Controls.Add(new Label{Text="DEBUFFS",ForeColor=dim,Dock=DockStyle.Fill,Font=new Font("Segoe UI",8,FontStyle.Bold)},1,0);
+            buffList.Margin=new Padding(0,0,4,0);debuffList.Margin=new Padding(4,0,0,0);
+            effectLists.Controls.Add(buffList,0,1);effectLists.Controls.Add(debuffList,1,1);
+            var buffIndices=new List<int>();var debuffIndices=new List<int>();
+            bool selectingEffect=false;
+            buffList.SelectedIndexChanged+=delegate{
+                if(selectingEffect||buffList.SelectedIndex<0)return;
+                selectingEffect=true;debuffList.ClearSelected();effects.SelectedIndex=buffIndices[buffList.SelectedIndex];selectingEffect=false;
+            };
+            debuffList.SelectedIndexChanged+=delegate{
+                if(selectingEffect||debuffList.SelectedIndex<0)return;
+                selectingEffect=true;buffList.ClearSelected();effects.SelectedIndex=debuffIndices[debuffList.SelectedIndex];selectingEffect=false;
+            };
             var effectName=BuilderText("");var effectSpell=BuilderText("");
             var effectType=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White};
             effectType.Items.AddRange(new object[]{"Buff","Debuff"});
@@ -800,7 +829,7 @@ namespace BlightfallPopsDesktop {
             addField("Saved card",presets);addField("Card name",name);addField("Main Spell ID",spell);
             addField("Main icon",imageButton);addField("",clearImage);
             activeFields=effectFields;
-            addField("Linked buffs / debuffs",effects);addField("",addEffect);
+            addField("Linked buffs / debuffs",effectLists);addField("",addEffect);
             addField("Selected effect name",effectName);addField("Selected effect Spell ID",effectSpell);
             addField("Effect type",effectType);addField("Display condition",condition);
             addField("Effect icon — optional custom image",effectImage);addField("",saveEffect);addField("",removeEffect);
@@ -865,9 +894,17 @@ namespace BlightfallPopsDesktop {
                 }
             };
             Action fillEffects=delegate{
-                int previous=effects.SelectedIndex;effects.Items.Clear();
-                foreach(var e in card.Effects)effects.Items.Add(e.Type+": "+e.Name+" ["+e.SpellId+"]");
+                int previous=effects.SelectedIndex;
+                selectingEffect=true;effects.Items.Clear();buffList.Items.Clear();debuffList.Items.Clear();buffIndices.Clear();debuffIndices.Clear();
+                for(int n=0;n<card.Effects.Count;n++){
+                    var e=card.Effects[n];
+                    effects.Items.Add(e.Type+": "+e.Name+" ["+e.SpellId+"]");
+                    if(e.Type=="Debuff"){debuffIndices.Add(n);debuffList.Items.Add(e.Name+" ["+e.SpellId+"]");}
+                    else{buffIndices.Add(n);buffList.Items.Add(e.Name+" ["+e.SpellId+"]");}
+                }
+                selectingEffect=false;
                 if(effects.Items.Count>0)effects.SelectedIndex=Math.Max(0,Math.Min(previous,effects.Items.Count-1));
+                else effects.SelectedIndex=-1;
                 refresh();
             };
             Action fillPresets=delegate{
@@ -892,6 +929,10 @@ namespace BlightfallPopsDesktop {
             addEffect.Click+=delegate{card.Effects.Add(new CustomEffect());fillEffects();effects.SelectedIndex=card.Effects.Count-1;};
             effects.SelectedIndexChanged+=delegate{
                 int i=effects.SelectedIndex;bool enabled=i>=0&&i<card.Effects.Count;
+                selectingEffect=true;
+                buffList.SelectedIndex=buffIndices.IndexOf(i);
+                debuffList.SelectedIndex=debuffIndices.IndexOf(i);
+                selectingEffect=false;
                 foreach(Control c in new Control[]{effectName,effectSpell,effectType,condition,effectImage,saveEffect,removeEffect})c.Enabled=enabled;
                 loading=true;
                 effectName.Text=enabled?card.Effects[i].Name:"";effectSpell.Text=enabled?card.Effects[i].SpellId:"";
@@ -916,6 +957,8 @@ namespace BlightfallPopsDesktop {
                 effects.Items[i]=e.Type+": "+e.Name+" ["+e.SpellId+"]";
                 effects.SelectedIndex=i;
                 effects.EndUpdate();
+                // Refresh both selectors when an effect is renamed or changes type.
+                fillEffects();effects.SelectedIndex=i;
                 refresh();
                 statusLabel.Text="Effect updated in draft. Click Save card to store it permanently.";
             };
@@ -937,10 +980,10 @@ namespace BlightfallPopsDesktop {
                 int selected=presets.SelectedIndex;
                 if(selected>0&&selected<=definitions.Count)definitions[selected-1]=card;else definitions.Add(card);
                 try{WriteCustomCards(definitions);fillPresets();presets.SelectedIndex=definitions.IndexOf(card)+1;
-                    if(card.SpellId=="1271967")foreach(var effect in card.Effects){
+                    if((card.SpellId=="1271967"||card.SpellId=="1271974"))foreach(var effect in card.Effects){
                         tracker.WatchedAuras[effect.SpellId]=effect.Type;customAuraInfo[effect.SpellId]=effect;
                     }
-                    statusLabel.Text="Saved. Linked aura tracking applies to subsequent Blightfall casts.";
+                    statusLabel.Text="Saved. Linked aura tracking applies to subsequent Blightfall casts. Re-scan the log for older events.";
                 }catch(Exception ex){MessageBox.Show(editor,ex.Message,"Unable to save",MessageBoxButtons.OK,MessageBoxIcon.Error);}
             };
             var grip=new Panel{Size=new Size(18,18),Cursor=Cursors.SizeNWSE,BackColor=Color.FromArgb(43,48,52),Anchor=AnchorStyles.Bottom|AnchorStyles.Right};
