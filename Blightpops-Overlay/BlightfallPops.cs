@@ -685,6 +685,94 @@ namespace BlightfallPopsDesktop {
             try{if(!String.IsNullOrEmpty(path)&&File.Exists(path))using(var loaded=Image.FromFile(path))return new Bitmap(loaded);}catch{}
             return null;
         }
+        private static string AssetFolder { get { return Path.Combine(Settings.DirectoryPath,"Assets","CustomIcons"); } }
+        private static bool IsSupportedAsset(string path){
+            string ext=Path.GetExtension(path).ToLowerInvariant();
+            return ext==".png"||ext==".jpg"||ext==".jpeg"||ext==".bmp"||ext==".gif";
+        }
+        private static string ImportAsset(string source){
+            Directory.CreateDirectory(AssetFolder);
+            if(!IsSupportedAsset(source))throw new InvalidOperationException("Unsupported image format.");
+            // Validate image before copying it into the shared library.
+            using(var img=Image.FromFile(source)){if(img.Width<1||img.Height<1)throw new InvalidDataException("Invalid image.");}
+            string baseName=Path.GetFileNameWithoutExtension(source);
+            foreach(char c in Path.GetInvalidFileNameChars())baseName=baseName.Replace(c,'_');
+            if(String.IsNullOrWhiteSpace(baseName))baseName="icon";
+            string ext=Path.GetExtension(source).ToLowerInvariant();
+            string destination=Path.Combine(AssetFolder,baseName+ext);
+            if(String.Equals(Path.GetFullPath(source),Path.GetFullPath(destination),StringComparison.OrdinalIgnoreCase))return destination;
+            int suffix=2;
+            while(File.Exists(destination))destination=Path.Combine(AssetFolder,baseName+"-"+(suffix++)+ext);
+            File.Copy(source,destination);
+            return destination;
+        }
+        private static string ChooseLibraryAsset(IWin32Window owner,string current){
+            Directory.CreateDirectory(AssetFolder);
+            string chosen=null;
+            using(var window=new Form{Text="Blightfall Pops — Asset Library",Size=new Size(670,520),MinimumSize=new Size(480,380),
+                StartPosition=FormStartPosition.CenterParent,BackColor=Color.FromArgb(25,29,34),ForeColor=Color.White,ShowIcon=false}){
+                var top=new Panel{Dock=DockStyle.Top,Height=75,Padding=new Padding(10,9,10,7)};
+                var search=BuilderText("");search.Dock=DockStyle.Top;
+                var searchCaption=BuilderLabel("SEARCH ICONS BY NAME");searchCaption.Dock=DockStyle.Top;
+                top.Controls.Add(search);top.Controls.Add(searchCaption);
+                var footer=new FlowLayoutPanel{Dock=DockStyle.Bottom,Height=45,FlowDirection=FlowDirection.RightToLeft,Padding=new Padding(7)};
+                var use=BuilderButton("Use selected icon");use.Width=155;
+                var import=BuilderButton("+ Import images");import.Width=140;
+                var remove=BuilderButton("Delete asset");remove.Width=105;
+                var reset=BuilderButton("Use default icon");reset.Width=135;
+                footer.Controls.Add(use);footer.Controls.Add(reset);footer.Controls.Add(remove);footer.Controls.Add(import);
+                var list=new ListView{Dock=DockStyle.Fill,View=View.LargeIcon,MultiSelect=false,HideSelection=false,
+                    BackColor=Color.FromArgb(35,40,47),ForeColor=Color.White,BorderStyle=BorderStyle.None};
+                var images=new ImageList{ImageSize=new Size(54,54),ColorDepth=ColorDepth.Depth32Bit};
+                list.LargeImageList=images;
+                Action reload=delegate{
+                    string old=list.SelectedItems.Count>0?list.SelectedItems[0].Tag as string:current;
+                    list.BeginUpdate();list.Items.Clear();images.Images.Clear();
+                    string[] paths=Directory.GetFiles(AssetFolder);
+                    Array.Sort(paths,StringComparer.OrdinalIgnoreCase);
+                    foreach(string path in paths){
+                        if(!IsSupportedAsset(path)||Path.GetFileNameWithoutExtension(path).IndexOf(search.Text,StringComparison.OrdinalIgnoreCase)<0)continue;
+                        using(var original=ReadBuilderImage(path)){
+                            if(original==null)continue;
+                            var thumb=new Bitmap(54,54);
+                            using(var g=Graphics.FromImage(thumb)){
+                                g.Clear(Color.FromArgb(42,47,54));
+                                g.InterpolationMode=System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                                float ratio=Math.Min(54f/original.Width,54f/original.Height);
+                                int w=Math.Max(1,(int)(original.Width*ratio)),h=Math.Max(1,(int)(original.Height*ratio));
+                                g.DrawImage(original,(54-w)/2,(54-h)/2,w,h);
+                            }
+                            images.Images.Add(thumb);
+                        }
+                        var item=new ListViewItem(Path.GetFileNameWithoutExtension(path),images.Images.Count-1){Tag=path};
+                        list.Items.Add(item);
+                        if(String.Equals(old,path,StringComparison.OrdinalIgnoreCase))item.Selected=true;
+                    }
+                    list.EndUpdate();
+                };
+                search.TextChanged+=delegate{reload();};
+                import.Click+=delegate{
+                    using(var dialog=new OpenFileDialog{Title="Import icons into asset library",Filter="Images (*.png;*.jpg;*.jpeg;*.bmp;*.gif)|*.png;*.jpg;*.jpeg;*.bmp;*.gif",Multiselect=true}){
+                        if(dialog.ShowDialog(window)!=DialogResult.OK)return;
+                        foreach(string path in dialog.FileNames)try{current=ImportAsset(path);}catch(Exception ex){MessageBox.Show(window,ex.Message,"Import failed",MessageBoxButtons.OK,MessageBoxIcon.Warning);}
+                        search.Text="";reload();
+                    }
+                };
+                remove.Click+=delegate{
+                    if(list.SelectedItems.Count==0)return;
+                    string path=list.SelectedItems[0].Tag as string;
+                    if(MessageBox.Show(window,"Delete this icon from the shared library? Cards using it will need a replacement.","Delete asset",MessageBoxButtons.YesNo,MessageBoxIcon.Warning)!=DialogResult.Yes)return;
+                    try{File.Delete(path);current=null;reload();}catch(Exception ex){MessageBox.Show(window,ex.Message,"Delete failed");}
+                };
+                use.Click+=delegate{if(list.SelectedItems.Count==0)return;chosen=list.SelectedItems[0].Tag as string;window.DialogResult=DialogResult.OK;window.Close();};
+                list.DoubleClick+=delegate{use.PerformClick();};
+                reset.Click+=delegate{chosen="";window.DialogResult=DialogResult.OK;window.Close();};
+                window.Controls.Add(list);window.Controls.Add(footer);window.Controls.Add(top);
+                reload();
+                if(window.ShowDialog(owner)==DialogResult.OK)return chosen;
+            }
+            return null; // Cancel is distinct from selecting the default icon.
+        }
         private static Bitmap MakeBuilderMenuIcon(){
             // Draw a sharp, transparent 20px card-and-pencil glyph for the cogwheel menu.
             var bitmap=new Bitmap(20,20,System.Drawing.Imaging.PixelFormat.Format32bppArgb);
@@ -808,7 +896,7 @@ namespace BlightfallPopsDesktop {
             };
             var presets=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White,Height=29};
             var name=BuilderText(card.Name);var spell=BuilderText(card.SpellId);
-            var imageButton=BuilderButton("Choose main icon image...");
+            var imageButton=BuilderButton("Choose main icon (Asset Library)...");
             var clearImage=BuilderButton("Use Spell ID / default icon");
             var addBuff=BuilderButton("+ Add Buff");
             var addDebuff=BuilderButton("+ Add Debuff");
@@ -849,7 +937,7 @@ namespace BlightfallPopsDesktop {
             condition.Items.AddRange(new object[]{"Active at event","Applied by event","Detected in event window","Removed in event window"});
             var showCompact=new CheckBox{Text="Show in Compact",Checked=false,AutoSize=true,ForeColor=Color.White,BackColor=Color.FromArgb(25,29,34)};
             var showDetailed=new CheckBox{Text="Show in Detailed",Checked=true,AutoSize=true,ForeColor=Color.White,BackColor=Color.FromArgb(25,29,34)};
-            var effectImage=BuilderButton("Choose effect icon image...");var saveEffect=BuilderButton("Save selected effect");var removeEffect=BuilderButton("Remove selected effect");
+            var effectImage=BuilderButton("Choose effect icon (Asset Library)...");var saveEffect=BuilderButton("Save selected effect");var removeEffect=BuilderButton("Remove selected effect");
             addField("Saved card",presets);addField("Card name",name);addField("Main Spell ID",spell);
             addField("Main icon",imageButton);addField("",clearImage);
             activeFields=effectFields;
@@ -948,7 +1036,7 @@ namespace BlightfallPopsDesktop {
                     if(dialog.ShowDialog(editor)==DialogResult.OK)accept(dialog.FileName);
                 }};
             };
-            chooseImage(imageButton,delegate(string path){card.IconPath=path;refresh();});
+            imageButton.Click+=delegate{string path=ChooseLibraryAsset(editor,card.IconPath);if(path!=null){card.IconPath=path;refresh();}};
             clearImage.Click+=delegate{card.IconPath="";refresh();};
             mainIcon.Click+=delegate{imageButton.PerformClick();};
             Action<string> createEffect=delegate(string type){
@@ -1004,7 +1092,7 @@ namespace BlightfallPopsDesktop {
             saveEffect.Click+=delegate{commitEffect();};
             effectName.Leave+=delegate{commitEffect();};
             effectSpell.Leave+=delegate{commitEffect();};
-            chooseImage(effectImage,delegate(string path){if(effects.SelectedIndex>=0){card.Effects[effects.SelectedIndex].IconPath=path;commitEffect();}});
+            effectImage.Click+=delegate{if(effects.SelectedIndex<0)return;string path=ChooseLibraryAsset(editor,card.Effects[effects.SelectedIndex].IconPath);if(path!=null){card.Effects[effects.SelectedIndex].IconPath=path;commitEffect();}};
             removeEffect.Click+=delegate{
                 int i=effects.SelectedIndex;if(i<0||i>=card.Effects.Count)return;
                 card.Effects.RemoveAt(i);
