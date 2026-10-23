@@ -1,10 +1,26 @@
+## Compare Mode
+
+Compare Mode lets you inspect Blightfall events side by side. You can compare **two players from the same combat log** or **players from two separate combat log files** (including the same character across different logs).
+
+<img src="CompareMode.png" alt="Blightfall Pops Compare Mode showing two combat logs side by side" width="800">
+
+**How to use Compare Mode:**
+
+1. Open **Compare View** from the main overlay toolbar.
+2. Choose whether to compare players from the **same combat log** or **two separate combat logs**.
+3. For separate logs, select the combat log file for each side.
+4. Select a player for each column using the player dropdowns.
+5. Scroll through each column independently and expand an event to inspect its individual hits.
+
+Each side displays Blightfall events with damage totals, hit counts, and the available **Dread Plague (DP)** and **Virulent Plague (VP)** details. Conditional **Festering Scythe (FSC)** and **Soul Reaper (SR)** markers appear where applicable. The comparison window supports resizing and a dark, borderless title bar.
+
 ## Overlay Showcase
 
-<img src="https://raw.githubusercontent.com/ramirng1337/BlightfallPops/main/Blightfall%20Overlay%20Showcase.png" alt="Blightfall Pops  compact and extra-details views, with toolbar expanded and collapsed" width="800">
+<img src="https://raw.githubusercontent.com/ramirng1337/BlightfallPops/main/Blightfall%20Overlay%20Showcase.png" alt="Blightfall Pops compact and extra-details views, with toolbar expanded and collapsed" width="800">
 
 ## Toolbar and settings guide
-![Blightfall Pops toolbar legend](Blightfall%20Toolbar%20Legend.png)
 
+![Blightfall Pops toolbar legend](Blightfall%20Toolbar%20Legend.png)
 
 ## Development & AI Assistance
 
