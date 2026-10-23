@@ -989,17 +989,42 @@ namespace BlightfallPopsDesktop {
                 if(previous!=null){ownedImages.Remove(previous);previous.Dispose();}
                 if(img!=null)ownedImages.Add(img);
             };
+            // Preview the same embedded artwork used by the overlay when no custom
+            // library image is selected. Clone shared bitmaps because the preview owns
+            // and disposes its image instances independently.
+            Func<string,string,Image> previewIcon=delegate(string customPath,string spellId){
+                Image selected=ReadBuilderImage(customPath);
+                if(selected!=null)return selected;
+                string key=null;
+                switch((spellId??"").Trim()){
+                    case "1271974": case "1271967": key="BF";break;
+                    case "1240996": case "1241171": key="DP";break;
+                    case "1241167": key="VP";break;
+                    case "1241521": key="SR";break;
+                    case "1241077": key="SC";break;
+                    case "434237": key="BB";break;
+                    case "374598": key="CB";break;
+                    case "434246": key="BiL";break;
+                }
+                // Built-in Blightfall cards have a known default icon.
+                if(key==null && String.IsNullOrWhiteSpace(spellId))key="BF";
+                Image embedded;
+                if(key!=null && spellIcons.TryGetValue(key,out embedded) && embedded!=null)
+                    return new Bitmap(embedded);
+                return null;
+            };
             Action refresh=delegate{
                 mainText.Text=String.IsNullOrWhiteSpace(name.Text)?"Custom event":name.Text;
                 subText.Text="Spell ID: "+(String.IsNullOrWhiteSpace(spell.Text)?"not assigned":spell.Text);
-                if(!String.Equals(mainIcon.Tag as string,card.IconPath,StringComparison.Ordinal)){
-                    setImage(ReadBuilderImage(card.IconPath),mainIcon);mainIcon.Tag=card.IconPath;
+                string previewKey=(card.IconPath??"")+"|"+(spell.Text??"");
+                if(!String.Equals(mainIcon.Tag as string,previewKey,StringComparison.Ordinal)){
+                    setImage(previewIcon(card.IconPath,spell.Text),mainIcon);mainIcon.Tag=previewKey;
                 }
                 mainIcon.Invalidate();
                 while(effectPreview.Controls.Count>0){Control c=effectPreview.Controls[0];effectPreview.Controls.RemoveAt(0);c.Dispose();}
                 foreach(var effect in card.Effects){
                     var pic=new PictureBox{Size=new Size(35,35),Margin=new Padding(2),BackColor=Color.FromArgb(45,51,59),SizeMode=PictureBoxSizeMode.Zoom,Cursor=Cursors.Hand};
-                    setImage(ReadBuilderImage(effect.IconPath),pic);
+                    setImage(previewIcon(effect.IconPath,effect.SpellId),pic);
                     if(pic.Image==null){pic.Paint+=delegate(object sender,PaintEventArgs e){TextRenderer.DrawText(e.Graphics,"+",SystemFonts.MessageBoxFont,pic.ClientRectangle,dim,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);};}
                     var selectedEffect=effect;pic.Click+=delegate{effects.SelectedIndex=card.Effects.IndexOf(selectedEffect);effectImage.PerformClick();};
                     toolTip.SetToolTip(pic,effect.Name+" ("+effect.Type+", "+effect.SpellId+")");
