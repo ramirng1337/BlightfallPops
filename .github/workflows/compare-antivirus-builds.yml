@@ -1,0 +1,79 @@
+name: Compare antivirus detections
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: windows-2025
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Build original version
+        working-directory: Blightpops-Overlay
+        shell: cmd
+        run: call "Build Once.cmd" --ci
+
+      - name: Save original EXE and SHA-256
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path comparison/with-updater | Out-Null
+          Copy-Item Blightpops-Overlay/BlightfallPops.exe comparison/with-updater/BlightfallPops.exe
+          (Get-FileHash comparison/with-updater/BlightfallPops.exe -Algorithm SHA256).Hash | Set-Content comparison/with-updater/SHA256.txt
+
+      - name: Disable updater in temporary source copy
+        shell: pwsh
+        run: |
+          $project = 'Blightpops-Overlay'
+          $stub = @'
+          using System;
+          namespace BlightfallPopsDesktop {
+              internal sealed class ReleaseUpdate {
+                  public string Tag, DownloadUrl, Digest;
+                  public Version Version;
+              }
+              internal static class Updater {
+                  internal static ReleaseUpdate Latest() { throw new NotSupportedException("Updater disabled for antivirus comparison."); }
+                  internal static string Stage(ReleaseUpdate update) { throw new NotSupportedException("Updater disabled for antivirus comparison."); }
+                  internal static void StartInstaller(string directory, string target, bool framed) { throw new NotSupportedException("Updater disabled for antivirus comparison."); }
+                  internal static void Apply(string target, string pidText, string directory, bool framed) { throw new NotSupportedException("Updater disabled for antivirus comparison."); }
+                  internal static void CleanupLater(string directory) { }
+              }
+          }
+          '@
+          # The replacement is temporary on the Actions runner; no repository files are committed.
+          [System.IO.File]::WriteAllText((Join-Path (Resolve-Path $project).Path 'Updater.cs'), $stub, (New-Object System.Text.UTF8Encoding($false)))
+
+      - name: Build version without updater
+        working-directory: Blightpops-Overlay
+        shell: cmd
+        run: call "Build Once.cmd" --ci
+
+      - name: Save no-updater EXE and SHA-256
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path comparison/without-updater | Out-Null
+          Copy-Item Blightpops-Overlay/BlightfallPops.exe comparison/without-updater/BlightfallPops.exe
+          (Get-FileHash comparison/without-updater/BlightfallPops.exe -Algorithm SHA256).Hash | Set-Content comparison/without-updater/SHA256.txt
+          Write-Host 'WITH updater:'
+          Get-Content comparison/with-updater/SHA256.txt
+          Write-Host 'WITHOUT updater:'
+          Get-Content comparison/without-updater/SHA256.txt
+
+      - name: Upload original build
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlightfallPops-WITH-Updater
+          path: comparison/with-updater/
+          if-no-files-found: error
+
+      - name: Upload build without updater
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlightfallPops-WITHOUT-Updater
+          path: comparison/without-updater/
+          if-no-files-found: error
