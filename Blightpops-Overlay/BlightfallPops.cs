@@ -705,6 +705,17 @@ namespace BlightfallPopsDesktop {
             var b=new Button{Text=text,Height=30,AutoSize=false,FlatStyle=FlatStyle.Flat,BackColor=Color.FromArgb(45,51,59),ForeColor=Color.White,Font=new Font("Segoe UI",9)};
             b.FlatAppearance.BorderColor=Color.FromArgb(68,76,85);return b;
         }
+        // Uniform caption buttons for every borderless tool window.
+        private static Button CaptionButton(string glyph, Color foreground, Color background){
+            var button=new Button{Text=glyph,Width=42,Height=32,Margin=Padding.Empty,
+                Padding=Padding.Empty,FlatStyle=FlatStyle.Flat,BackColor=background,
+                ForeColor=foreground,Font=new Font("Segoe UI Symbol",11,FontStyle.Regular),
+                TextAlign=ContentAlignment.MiddleCenter,TabStop=false,UseVisualStyleBackColor=false};
+            button.FlatAppearance.BorderSize=0;
+            button.FlatAppearance.MouseOverBackColor=Color.FromArgb(49,51,54);
+            button.FlatAppearance.MouseDownBackColor=Color.FromArgb(65,69,76);
+            return button;
+        }
         private static Label BuilderLabel(string text){return new Label{Text=text,ForeColor=Color.FromArgb(178,183,183),Height=22,AutoSize=false,Font=new Font("Segoe UI",9)};}
         private static TextBox BuilderText(string value){return new TextBox{Text=value,BorderStyle=BorderStyle.FixedSingle,BackColor=Color.FromArgb(35,40,47),ForeColor=Color.White,Font=new Font("Segoe UI",10),Height=26};}
         private static Image ReadBuilderImage(string path){
@@ -865,8 +876,8 @@ namespace BlightfallPopsDesktop {
             var heading=new Label{Text="BLIGHTFALL POPS  /  EVENT CARD BUILDER",ForeColor=Color.FromArgb(222,224,218),
                 Font=new Font("Segoe UI",9,FontStyle.Bold),TextAlign=ContentAlignment.MiddleLeft,Dock=DockStyle.Fill};
             heading.Padding=new Padding(12,0,0,0);
-            var close=BuilderButton("×");close.Width=36;close.Dock=DockStyle.Right;close.BackColor=titleBar.BackColor;close.ForeColor=red;
-            var minimize=BuilderButton("−");minimize.Width=36;minimize.Dock=DockStyle.Right;minimize.BackColor=titleBar.BackColor;
+            var close=CaptionButton("×",red,titleBar.BackColor);close.Dock=DockStyle.Right;
+            var minimize=CaptionButton("−",dim,titleBar.BackColor);minimize.Dock=DockStyle.Right;
             close.Click+=delegate{editor.Close();};minimize.Click+=delegate{editor.WindowState=FormWindowState.Minimized;};
             titleBar.Controls.Add(heading);titleBar.Controls.Add(minimize);titleBar.Controls.Add(close);editor.Controls.Add(titleBar);
             Point? drag=null;Point origin=Point.Empty;
@@ -1409,7 +1420,34 @@ namespace BlightfallPopsDesktop {
             compareEventsButton.Click+=delegate{
                 using(var chooser=new Form{Text="Compare / Event Card Library",Size=new Size(440,510),
                     MinimumSize=new Size(360,360),StartPosition=FormStartPosition.CenterParent,
-                    BackColor=Color.FromArgb(24,28,34),ForeColor=Color.White,ShowInTaskbar=false}){
+                    BackColor=Color.FromArgb(24,28,34),ForeColor=Color.White,ShowInTaskbar=false,
+                    FormBorderStyle=FormBorderStyle.None}){
+                    // Match the borderless dark title bars used by the main overlay and builder.
+                    var libraryHeader=new Panel{Dock=DockStyle.Top,Height=32,BackColor=Color.FromArgb(10,11,13)};
+                    var libraryTitle=new Label{Text="BLIGHTFALL POPS  /  COMPARE EVENT LIBRARY",
+                        Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,
+                        ForeColor=Color.FromArgb(222,224,218),Font=new Font("Segoe UI",9,FontStyle.Bold),
+                        Padding=new Padding(12,0,0,0)};
+                    var libraryClose=CaptionButton("×",Color.FromArgb(235,92,92),libraryHeader.BackColor);libraryClose.Dock=DockStyle.Right;
+                    var libraryMinimize=CaptionButton("−",Color.FromArgb(178,183,183),libraryHeader.BackColor);libraryMinimize.Dock=DockStyle.Right;
+                    libraryClose.Click+=delegate{chooser.Close();};
+                    libraryMinimize.Click+=delegate{chooser.WindowState=FormWindowState.Minimized;};
+                    libraryHeader.Controls.Add(libraryTitle);
+                    libraryHeader.Controls.Add(libraryMinimize);
+                    libraryHeader.Controls.Add(libraryClose);
+                    Point? libraryDragStart=null;Point libraryWindowStart=Point.Empty;
+                    MouseEventHandler libraryDown=delegate(object sender,MouseEventArgs e){
+                        if(e.Button==MouseButtons.Left){libraryDragStart=Control.MousePosition;libraryWindowStart=chooser.Location;}
+                    };
+                    MouseEventHandler libraryMove=delegate{
+                        if(libraryDragStart.HasValue){Point now=Control.MousePosition;
+                            chooser.Location=new Point(libraryWindowStart.X+now.X-libraryDragStart.Value.X,
+                                libraryWindowStart.Y+now.Y-libraryDragStart.Value.Y);}
+                    };
+                    MouseEventHandler libraryUp=delegate{libraryDragStart=null;};
+                    foreach(Control dragControl in new Control[]{libraryHeader,libraryTitle}){
+                        dragControl.MouseDown+=libraryDown;dragControl.MouseMove+=libraryMove;dragControl.MouseUp+=libraryUp;
+                    }
                     var search=BuilderText("");search.Dock=DockStyle.Top;
                     var list=new CheckedListBox{Dock=DockStyle.Fill,CheckOnClick=true,
                         BackColor=Color.FromArgb(35,40,47),ForeColor=Color.White,
@@ -1447,6 +1485,7 @@ namespace BlightfallPopsDesktop {
                         if(refreshEventSelection!=null)refreshEventSelection();
                     };
                     chooser.Controls.Add(list);chooser.Controls.Add(done);chooser.Controls.Add(footer);chooser.Controls.Add(search);
+                    chooser.Controls.Add(libraryHeader);
                     chooser.ShowDialog(compare);
                 }
             };
@@ -1495,21 +1534,15 @@ namespace BlightfallPopsDesktop {
             var compareTitle=new Label{Text="BLIGHTFALL POPS  /  COMPARE",ForeColor=Color.FromArgb(222,224,218),
                 Font=new Font("Segoe UI",9,FontStyle.Bold),AutoSize=false,TextAlign=ContentAlignment.MiddleLeft,
                 Bounds=new Rectangle(12,0,340,32)};
-            var compareClose=new Button{Text="×",Font=new Font("Segoe UI",15),ForeColor=red,
-                BackColor=compareTitleBar.BackColor,FlatStyle=FlatStyle.Flat,Size=new Size(36,30),TabStop=false};
-            var compareMinimize=new Button{Text="−",Font=new Font("Segoe UI",14),ForeColor=dim,
-                BackColor=compareTitleBar.BackColor,FlatStyle=FlatStyle.Flat,Size=new Size(36,30),TabStop=false};
-            compareClose.FlatAppearance.BorderSize=0;
-            compareMinimize.FlatAppearance.BorderSize=0;
-            compareClose.FlatAppearance.MouseOverBackColor=Color.FromArgb(49,51,54);
-            compareMinimize.FlatAppearance.MouseOverBackColor=Color.FromArgb(49,51,54);
+            var compareClose=CaptionButton("×",red,compareTitleBar.BackColor);
+            var compareMinimize=CaptionButton("−",dim,compareTitleBar.BackColor);
             compareClose.Click+=delegate{compare.Close();};
             compareMinimize.Click+=delegate{compare.WindowState=FormWindowState.Minimized;};
             compareTitleBar.Controls.AddRange(new Control[]{compareTitle,compareMinimize,compareClose});
             Action layoutCompareTitle=delegate{
-                compareClose.Location=new Point(compareTitleBar.ClientSize.Width-37,1);
-                compareMinimize.Location=new Point(compareTitleBar.ClientSize.Width-74,1);
-                compareTitle.Width=Math.Max(80,compareTitleBar.ClientSize.Width-90);
+                compareClose.Location=new Point(compareTitleBar.ClientSize.Width-42,0);
+                compareMinimize.Location=new Point(compareTitleBar.ClientSize.Width-84,0);
+                compareTitle.Width=Math.Max(80,compareTitleBar.ClientSize.Width-96);
             };
             compareTitleBar.Resize+=delegate{layoutCompareTitle();};
             compare.Controls.Add(compareTitleBar);layoutCompareTitle();
