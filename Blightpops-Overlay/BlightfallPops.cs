@@ -671,7 +671,7 @@ namespace BlightfallPopsDesktop {
             MouseEventHandler move=delegate{if(drag.HasValue){Point pt=Control.MousePosition;editor.Location=new Point(origin.X+pt.X-drag.Value.X,origin.Y+pt.Y-drag.Value.Y);}};
             MouseEventHandler up=delegate{drag=null;};
             foreach(Control c in new Control[]{titleBar,heading}){c.MouseDown+=down;c.MouseMove+=move;c.MouseUp+=up;}
-            var footer=new Panel{Dock=DockStyle.Bottom,Height=53,BackColor=Color.FromArgb(27,31,36),Padding=new Padding(12,9,32,9)};
+            var footer=new Panel{Dock=DockStyle.Bottom,Height=53,BackColor=Color.FromArgb(27,31,36),Padding=new Padding(12,9,52,9)};
             var save=BuilderButton("Save card");save.Dock=DockStyle.Right;save.Width=130;
             var statusLabel=new Label{Text="Card definitions are saved locally; live tracking is not changed.",Dock=DockStyle.Fill,
                 TextAlign=ContentAlignment.MiddleLeft,ForeColor=dim,Font=new Font("Segoe UI",9)};
@@ -1337,7 +1337,7 @@ namespace BlightfallPopsDesktop {
             compare.Show(this);
         }
         private void ShowPlayerMenu(){
-            var menu=new ContextMenuStrip{BackColor=Color.FromArgb(30,33,37),ForeColor=Color.White,ShowImageMargin=false};
+            var menu=new ContextMenuStrip{BackColor=Color.FromArgb(30,33,37),ForeColor=Color.White,ShowImageMargin=true};
             foreach(var mode in new[]{"Myself","Specific Player","All Players"}){
                 string chosen=mode;
                 var item=new ToolStripMenuItem(mode){Checked=settings.PlayerMode==mode};
