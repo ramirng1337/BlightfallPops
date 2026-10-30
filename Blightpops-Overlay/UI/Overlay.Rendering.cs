@@ -326,6 +326,7 @@ namespace BlightfallPopsDesktop {
             refreshingCards=true;cards.SuspendLayout();
             try{
             var live=new HashSet<Entry>(tracker.Entries);
+            foreach(var custom in tracker.CustomEntries)live.Add(custom);
             var stale=new List<Entry>();foreach(var entry in cardCache.Keys)if(!live.Contains(entry))stale.Add(entry);
             foreach(var entry in stale){var state=cardCache[entry];cards.Controls.Remove(state.Card);state.Card.Dispose();cardCache.Remove(entry);}
             foreach(var state in cardCache.Values)if(!PlayerVisible(state.Entry)||state.Entry.Beast&&!settings.ShowBeasts)state.Card.Visible=false;
@@ -333,6 +334,7 @@ namespace BlightfallPopsDesktop {
             visibleCards.Clear();
             int y=3;
             var ordered=new List<Entry>(tracker.Entries);
+            ordered.AddRange(tracker.CustomEntries);
             ordered.Sort(delegate(Entry a,Entry b){
                 if(settings.PlayerMode=="All Players"&&a.PlayerGuid!=b.PlayerGuid){
                     CombatPlayer ap,bp;
@@ -376,14 +378,14 @@ namespace BlightfallPopsDesktop {
                     }
                 }
                 int width=Math.Max(260,cards.ClientSize.Width-7);
-                string signature=CardSignature(entry,width);CardState state;
+                string signature=entry.Custom?CustomCardSignature(entry,width):CardSignature(entry,width);CardState state;
                 if(!cardCache.TryGetValue(entry,out state)){
                     state=new CardState{Entry=entry,Card=new BufferedPanel{Left=3,Width=width,BackColor=rowColor}};
                     cardCache.Add(entry,state);state.Card.MouseWheel+=ScrollWheel;cards.Controls.Add(state.Card);
                 }
-                var card=state.Card;visibleCards.Add(state);card.Tag=y;card.Top=y-oldScroll;card.Visible=y+Math.Max(card.Height,PreviewEventHeight(entry,width,ShowMiniCards))>=oldScroll-4&&y<=oldScroll+cards.ClientSize.Height+4;
+                var card=state.Card;visibleCards.Add(state);card.Tag=y;card.Top=y-oldScroll;card.Visible=y+Math.Max(card.Height,(entry.Custom?CustomCardHeight(entry):PreviewEventHeight(entry,width,ShowMiniCards)))>=oldScroll-4&&y<=oldScroll+cards.ClientSize.Height+4;
                 if(state.Signature==signature){y+=card.Height+(ShowMiniCards?4:5);continue;}
-                int predictedHeight=PreviewEventHeight(entry,width,ShowMiniCards);
+                int predictedHeight=(entry.Custom?CustomCardHeight(entry):PreviewEventHeight(entry,width,ShowMiniCards));
                 if(y+predictedHeight<oldScroll-80||y>oldScroll+cards.ClientSize.Height+80){
                     // Retain lightweight geometry; defer control construction and wrapping until visible.
                     card.Width=width;card.Height=predictedHeight;
@@ -393,6 +395,12 @@ namespace BlightfallPopsDesktop {
                 var oldControls=new List<Control>();foreach(Control control in card.Controls)oldControls.Add(control);
                 card.Controls.Clear();foreach(var control in oldControls)control.Dispose();state.Rows.Clear();
                 card.Width=width;state.Signature=signature;
+                if(entry.Custom){
+                    RenderCustomCard(card,entry);
+                    foreach(Control child in card.Controls)HookWheel(child);
+                    card.ResumeLayout();y+=card.Height+4;
+                    continue;
+                }
                 if(ShowMiniCards){
                     RenderMiniCard(card,entry);
                     foreach(Control child in card.Controls)if(!(child is Panel&&state.Rows.ContainsValue((Panel)child)))HookWheel(child);

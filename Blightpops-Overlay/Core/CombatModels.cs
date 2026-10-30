@@ -21,7 +21,8 @@ namespace BlightfallPopsDesktop {
     // Tracked cast and damage event.
     internal sealed class Entry {
         public readonly List<AuraSnapshot> AuraSnapshots=new List<AuraSnapshot>();
-        public bool Beast, DOpen, VOpen, MOpen, Exploded, BlightfallBefore;
+        public bool Beast, Custom, DOpen, VOpen, MOpen, Exploded, BlightfallBefore;
+        public string CustomName;
         public bool? Scythe, SoulReaper;
         public int SoulReaperTargets;
         public int Number;
