@@ -72,7 +72,7 @@ namespace BlightfallPopsDesktop {
         }
         // Independent, read-only log scan for compare mode; does not change the live overlay.
         private Tracker ReadCompareLog(string path){
-            var result=new Tracker{TrackAllPlayers=true,WindowMs=settings.WindowMs};
+            var result=new Tracker{TrackAllPlayers=true,WindowMs=tracker.WindowMs};
             // A separate combat log must use the same configured aura spell IDs.
             // Otherwise its historical hit snapshots cannot contain custom debuffs.
             foreach(var watched in tracker.WatchedAuras)

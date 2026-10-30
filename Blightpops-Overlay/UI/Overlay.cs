@@ -152,7 +152,7 @@ namespace BlightfallPopsDesktop {
             FormClosing+=delegate {EndResizePreview(false);Save();poll.Stop();toolTip.Dispose();if(artwork!=null)artwork.Dispose();foreach(var image in spellIcons.Values)image.Dispose();foreach(var font in labelFonts.Values)font.Dispose();};
             try{foreach(var custom in ReadCustomCards())if((custom.SpellId=="1271967"||custom.SpellId=="1271974"))foreach(var effect in custom.Effects)
                 if(!String.IsNullOrWhiteSpace(effect.SpellId)){if(effect.Type=="Damage")tracker.WatchedDamage[effect.SpellId.Trim()]=effect.Name;else {tracker.WatchedAuras[effect.SpellId.Trim()]=effect.Type;customAuraInfo[effect.SpellId.Trim()]=effect;}}}catch{}
-            tracker.WindowMs=settings.WindowMs;tracker.TrackAllPlayers=true;tracker.Changed+=delegate {dirty=true;};
+            tracker.WindowMs=BlightfallWindowMs(settings.WindowMs);tracker.TrackAllPlayers=true;tracker.Changed+=delegate {dirty=true;};
             poll.Interval=350;poll.Tick+=delegate {if(resizeStart.HasValue)return;
                 if(scanningFullLog){ContinueFullLogScan();UpdateLogButton();return;}
                 try {if(settings.WatchLog&&settings.Log!=""){
@@ -283,8 +283,14 @@ namespace BlightfallPopsDesktop {
             button.Click+=delegate {toggle();tip();button.Invalidate();RefreshCards();Save();};
             tip();options.Controls.Add(button);return button;
         }
+        // Existing settings remain the fallback for cards saved before window configuration.
+        private static int BlightfallWindowMs(int fallback) {
+            try {foreach(var card in ReadCustomCards())
+                if((card.SpellId=="1271967"||card.SpellId=="1271974")&&card.WindowMs>0)return card.WindowMs;
+            }catch{}
+            return fallback;
+        }
         private void SetupOptions() {
-            var time=new NumericUpDown{Minimum=500,Maximum=2000,Increment=100,Value=settings.WindowMs,Width=65,Left=12,Top=12};
             var font=new NumericUpDown{Minimum=8,Maximum=18,Value=settings.TextSize,Width=52,Left=137,Top=12};
             var icons=new NumericUpDown{Minimum=18,Maximum=40,Value=settings.IconSize,Width=52,Left=218,Top=12};
             var number=new CheckBox{Text="Short numbers",Checked=settings.CompactNumbers,AutoSize=true,Left=12,Top=62,ForeColor=dim};
@@ -316,8 +322,7 @@ namespace BlightfallPopsDesktop {
             playerFilter.Disposed+=delegate{playerModeRefresh.Stop();playerModeRefresh.Dispose();};
             playerModeRefresh.Start();
             options.Controls.Add(playerFilter);
-            options.Controls.AddRange(new Control[]{time,font,icons,number,grouped,onTop,beastIcon,updateButton,overkill,
-                new Label{Text="Blightfall ms",Left=12,Top=35,Width=115,ForeColor=dim},
+            options.Controls.AddRange(new Control[]{font,icons,number,grouped,onTop,beastIcon,updateButton,overkill,
                 new Label{Text="Text size",Left=137,Top=35,Width=70,ForeColor=dim},
                 new Label{Text="Icon size",Left=218,Top=35,Width=70,ForeColor=dim}});
             // Card Builder is a dedicated Options shortcut, not a player-filter menu entry.
@@ -344,7 +349,6 @@ namespace BlightfallPopsDesktop {
             beastButton=OptionIcon("BB",62,"Blood Beast events",delegate{return settings.ShowBeasts;},delegate{settings.ShowBeasts=!settings.ShowBeasts;});
             OptionIcon("SR",104,"Soul Reaper marker",delegate{return settings.ShowSoulReaper;},delegate{settings.ShowSoulReaper=!settings.ShowSoulReaper;});
             OptionIcon("SC",146,"Festering Scythe marker",delegate{return settings.ShowScythe;},delegate{settings.ShowScythe=!settings.ShowScythe;});
-            time.ValueChanged+=delegate {settings.WindowMs=(int)time.Value;tracker.WindowMs=settings.WindowMs;Save();};
             font.ValueChanged+=delegate {settings.TextSize=(int)font.Value;RefreshCards();Save();};
             icons.ValueChanged+=delegate {settings.IconSize=(int)icons.Value;RefreshCards();Save();};
             number.CheckedChanged+=delegate {settings.CompactNumbers=number.Checked;RefreshCards();Save();};

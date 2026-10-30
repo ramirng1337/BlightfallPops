@@ -17,10 +17,12 @@ namespace BlightfallPopsDesktop {
         // Saved custom event definition.
         private sealed class CustomCard {
             public string Name="Custom event", SpellId="", IconPath="";
+            // Zero means an older card without a configured collection window.
+            public int WindowMs=0;
             public List<CustomEffect> Effects=new List<CustomEffect>();
         }
         private static CustomCard CloneCard(CustomCard source){
-            var copy=new CustomCard{Name=source.Name,SpellId=source.SpellId,IconPath=source.IconPath};
+            var copy=new CustomCard{Name=source.Name,SpellId=source.SpellId,IconPath=source.IconPath,WindowMs=source.WindowMs};
             if(source.Effects!=null)foreach(var effect in source.Effects)if(effect!=null)copy.Effects.Add(CopyEffect(effect));
             return copy;
         }
@@ -306,6 +308,9 @@ namespace BlightfallPopsDesktop {
             };
             var presets=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White,Height=29};
             var name=BuilderText(card.Name);var spell=BuilderText(card.SpellId);
+            var windowMs=new NumericUpDown{Minimum=100,Maximum=60000,Increment=100,Width=120,BackColor=Color.FromArgb(35,40,47),ForeColor=Color.White};
+            Action syncWindow=delegate{windowMs.Value=Math.Max(windowMs.Minimum,Math.Min(windowMs.Maximum,card.WindowMs>0?card.WindowMs:settings.WindowMs));};
+            syncWindow();
             var imageButton=BuilderButton("Choose main icon (Asset Library)...");
             var clearImage=BuilderButton("Use Spell ID / default icon");
             var addBuff=BuilderButton("+ Add Buff");
@@ -353,6 +358,7 @@ namespace BlightfallPopsDesktop {
             var showDetailed=new CheckBox{Text="Show in Detailed",Checked=true,AutoSize=true,ForeColor=Color.White,BackColor=Color.FromArgb(25,29,34)};
             var effectImage=BuilderButton("Choose effect icon (Asset Library)...");var saveEffect=BuilderButton("Save selected effect");var removeEffect=BuilderButton("Remove selected effect");
             addField("Saved card",presets);addField("Card name",name);addField("Main Spell ID",spell);
+            addField("Damage collection window (ms)",windowMs);
             addField("Main icon",imageButton);addField("",clearImage);
             addField("Find saved effect template",templateSearch);
             addField("Select saved effect",reuseEffect);addField("",reuseButton);
@@ -521,10 +527,11 @@ namespace BlightfallPopsDesktop {
             presets.SelectedIndexChanged+=delegate{
                 if(loading)return;int i=presets.SelectedIndex;
                 card=i>0&&i<=definitions.Count?CloneCard(definitions[i-1]):new CustomCard();
-                loading=true;name.Text=card.Name;spell.Text=card.SpellId;loading=false;fillEffects();
+                loading=true;name.Text=card.Name;spell.Text=card.SpellId;syncWindow();loading=false;fillEffects();
             };
             name.TextChanged+=delegate{card.Name=name.Text;refresh();};
             spell.TextChanged+=delegate{card.SpellId=spell.Text;refresh();};
+            windowMs.ValueChanged+=delegate{if(!loading)card.WindowMs=(int)windowMs.Value;};
             Action<Button,Action<string>> chooseImage=delegate(Button button,Action<string> accept){
                 button.Click+=delegate{using(var dialog=new OpenFileDialog{Filter="Images (*.png;*.jpg;*.jpeg;*.bmp)|*.png;*.jpg;*.jpeg;*.bmp",Title="Select custom icon"}){
                     if(dialog.ShowDialog(editor)==DialogResult.OK)accept(dialog.FileName);
@@ -624,8 +631,10 @@ namespace BlightfallPopsDesktop {
                 int id; if(!int.TryParse(spell.Text,out id)||id<=0){MessageBox.Show(editor,"Enter a valid numeric main Spell ID.","Event Card Builder",MessageBoxButtons.OK,MessageBoxIcon.Warning);return;}
                 foreach(var effect in card.Effects){int effectId;if(!int.TryParse(effect.SpellId,out effectId)||effectId<=0){MessageBox.Show(editor,"Each linked effect needs a valid numeric Spell ID.","Event Card Builder",MessageBoxButtons.OK,MessageBoxIcon.Warning);return;}}
                 int selected=presets.SelectedIndex;
+                card.WindowMs=(int)windowMs.Value;
                 if(selected>0&&selected<=definitions.Count)definitions[selected-1]=card;else definitions.Add(card);
                 try{WriteCustomCards(definitions);fillPresets();presets.SelectedIndex=definitions.IndexOf(card)+1;refreshEffectTemplates();
+                    if(card.SpellId=="1271967"||card.SpellId=="1271974")tracker.WindowMs=card.WindowMs;
                     if((card.SpellId=="1271967"||card.SpellId=="1271974"))foreach(var effect in card.Effects){
                         if(effect.Type=="Damage")tracker.WatchedDamage[effect.SpellId]=effect.Name;
                         else {tracker.WatchedAuras[effect.SpellId]=effect.Type;customAuraInfo[effect.SpellId]=effect;}
