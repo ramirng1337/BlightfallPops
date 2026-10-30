@@ -312,7 +312,7 @@ namespace BlightfallPopsDesktop {
                     activeFields.RowStyles.Add(new RowStyle(SizeType.Absolute,20));
                     activeFields.Controls.Add(label,0,row);
                 }
-                int controlHeight=control is ListBox?94:control is TableLayoutPanel?(control is TableLayoutPanel && control.Controls.Count>2?94:29):control is ComboBox?27:control is Button?29:26;
+                int controlHeight=control is ListBox?94:control is TableLayoutPanel?(Object.Equals(control.Tag,"buttons")?29:94):control is ComboBox?27:control is Button?29:26;
                 control.Dock=DockStyle.Fill;
                 control.Margin=new Padding(0,0,0,4);
                 int fieldRow=activeFields.RowCount++;
@@ -328,12 +328,12 @@ namespace BlightfallPopsDesktop {
             var clearImage=BuilderButton("Use Spell ID / default icon");
             var addBuff=BuilderButton("+ Add Buff");
             var addDebuff=BuilderButton("+ Add Debuff");
-            var addDamage=BuilderButton("+ Add Secondary Damage");
+            var addDamage=BuilderButton("+ Add Damage");
             var reuseEffect=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White,Height=29,MaxDropDownItems=8,IntegralHeight=false};
             var templateSearch=BuilderText("");
             var reuseButton=BuilderButton("+ Add selected template");
             var templateEffects=new List<CustomEffect>();
-            var addButtons=new TableLayoutPanel{ColumnCount=3,RowCount=1,Margin=Padding.Empty,Padding=Padding.Empty,BackColor=Color.FromArgb(25,29,34)};
+            var addButtons=new TableLayoutPanel{Tag="buttons",ColumnCount=3,RowCount=1,Margin=Padding.Empty,Padding=Padding.Empty,BackColor=Color.FromArgb(25,29,34)};
             addButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,29));
             addButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,29));
             addButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,42));
@@ -346,17 +346,16 @@ namespace BlightfallPopsDesktop {
             var buffList=new ListBox{Dock=DockStyle.Fill,BackColor=Color.FromArgb(35,40,47),ForeColor=Color.White,BorderStyle=BorderStyle.FixedSingle,IntegralHeight=false};
             var damageList=new ListBox{Dock=DockStyle.Fill,BackColor=Color.FromArgb(35,40,47),ForeColor=Color.White,BorderStyle=BorderStyle.FixedSingle,IntegralHeight=false};
             var debuffList=new ListBox{Dock=DockStyle.Fill,BackColor=Color.FromArgb(35,40,47),ForeColor=Color.White,BorderStyle=BorderStyle.FixedSingle,IntegralHeight=false};
-            var effectLists=new TableLayoutPanel{ColumnCount=3,RowCount=2,Margin=Padding.Empty,Padding=Padding.Empty,BackColor=Color.FromArgb(25,29,34)};
-            effectLists.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,33));
-            effectLists.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,33));
-            effectLists.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,34));
+            var effectLists=new TableLayoutPanel{ColumnCount=2,RowCount=2,Margin=Padding.Empty,Padding=Padding.Empty,BackColor=Color.FromArgb(25,29,34)};
+            effectLists.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
+            effectLists.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
             effectLists.RowStyles.Add(new RowStyle(SizeType.Absolute,18));
             effectLists.RowStyles.Add(new RowStyle(SizeType.Percent,100));
             effectLists.Controls.Add(new Label{Text="BUFFS",ForeColor=dim,Dock=DockStyle.Fill,Font=new Font("Segoe UI",8,FontStyle.Bold)},0,0);
             effectLists.Controls.Add(new Label{Text="DEBUFFS",ForeColor=dim,Dock=DockStyle.Fill,Font=new Font("Segoe UI",8,FontStyle.Bold)},1,0);
-            effectLists.Controls.Add(new Label{Text="SECONDARY DAMAGE",ForeColor=dim,Dock=DockStyle.Fill,Font=new Font("Segoe UI",8,FontStyle.Bold)},2,0);
+            
             buffList.Margin=new Padding(0,0,4,0);debuffList.Margin=new Padding(4,0,0,0);
-            effectLists.Controls.Add(buffList,0,1);effectLists.Controls.Add(debuffList,1,1);effectLists.Controls.Add(damageList,2,1);
+            effectLists.Controls.Add(buffList,0,1);effectLists.Controls.Add(debuffList,1,1);
             var buffIndices=new List<int>();var debuffIndices=new List<int>();var damageIndices=new List<int>();
             bool selectingEffect=false;
             buffList.SelectedIndexChanged+=delegate{
@@ -385,7 +384,9 @@ namespace BlightfallPopsDesktop {
             addField("Find saved effect template",templateSearch);
             addField("Select saved effect",reuseEffect);addField("",reuseButton);
             activeFields=effectFields;
-            addField("Linked buffs / debuffs / secondary damage",effectLists);addField("",addButtons);
+            addField("Linked buffs / debuffs",effectLists);
+            addField("Secondary damage effects",damageList);
+            addField("",addButtons);
                         addField("Selected effect name",effectName);addField("Selected effect Spell ID or Name",effectSpell);
             addField("Display condition",condition);
             addField("",showCompact);addField("",showDetailed);

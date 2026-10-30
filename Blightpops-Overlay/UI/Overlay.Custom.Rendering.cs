@@ -6,14 +6,17 @@ using System.Windows.Forms;
 namespace BlightfallPopsDesktop {
     internal sealed partial class Overlay {
         // Keep custom card layout independent from built-in Blightfall cards.
-        private Dictionary<string,long> CustomDamageGroups(Entry entry) {
-            var totals=new Dictionary<string,long>(StringComparer.Ordinal);
+        private Dictionary<string,CustomDamageSummary> CustomDamageGroups(Entry entry) {
+            var totals=new Dictionary<string,CustomDamageSummary>(StringComparer.Ordinal);
             foreach(var hit in entry.Hits) {
-                string key=!String.IsNullOrWhiteSpace(hit.SpellName)?hit.SpellName:hit.SpellId??"Damage";
-                long value;totals.TryGetValue(key,out value);totals[key]=value+hit.Amount;
+                string key=!String.IsNullOrWhiteSpace(hit.SpellId)?hit.SpellId:hit.SpellName??"Damage";
+                CustomDamageSummary value;
+                if(!totals.TryGetValue(key,out value)){value=new CustomDamageSummary{Name=hit.SpellName,SpellId=hit.SpellId};totals[key]=value;}
+                value.Damage+=hit.Amount;value.Hits++;if(hit.Crit)value.Crits++;
             }
             return totals;
         }
+        private sealed class CustomDamageSummary {public string Name,SpellId;public long Damage;public int Hits,Crits;}
         private int CustomCardHeight(Entry entry) {
             return ShowMiniCards?68:Math.Max(88,60+CustomDamageGroups(entry).Count*26);
         }
@@ -35,7 +38,8 @@ namespace BlightfallPopsDesktop {
             if(ShowMiniCards)return;
             int y=60;
             foreach(var group in CustomDamageGroups(entry)) {
-                card.Controls.Add(Label(group.Key+"  "+Format(group.Value),dim,18,y,Math.Max(80,card.Width-32)));
+                string effect=String.IsNullOrWhiteSpace(group.Value.Name)?"Damage":group.Value.Name;
+                card.Controls.Add(Label(effect+" ["+group.Key+"]  "+Format(group.Value.Damage)+"  •  "+group.Value.Hits+" hits  •  "+group.Value.Crits+" crits",dim,18,y,Math.Max(80,card.Width-32)));
                 y+=26;
             }
         }
