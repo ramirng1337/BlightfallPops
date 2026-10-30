@@ -333,13 +333,6 @@ namespace BlightfallPopsDesktop {
             var templateSearch=BuilderText("");
             var reuseButton=BuilderButton("+ Add selected template");
             var templateEffects=new List<CustomEffect>();
-            var addButtons=new TableLayoutPanel{Tag="buttons",ColumnCount=3,RowCount=1,Margin=Padding.Empty,Padding=Padding.Empty,BackColor=Color.FromArgb(25,29,34)};
-            addButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,29));
-            addButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,29));
-            addButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,42));
-            addBuff.Dock=DockStyle.Fill;addDebuff.Dock=DockStyle.Fill;addDamage.Dock=DockStyle.Fill;
-            addBuff.Margin=new Padding(0,0,3,0);addDebuff.Margin=new Padding(3,0,0,0);
-            addButtons.Controls.Add(addBuff,0,0);addButtons.Controls.Add(addDebuff,1,0);addButtons.Controls.Add(addDamage,2,0);
             // Separate buff/debuff selectors; the hidden master list preserves the
             // existing editing and save logic, including its selected index.
             var effects=new ListBox();
@@ -386,7 +379,9 @@ namespace BlightfallPopsDesktop {
             activeFields=effectFields;
             addField("Linked buffs / debuffs",effectLists);
             addField("Secondary damage effects",damageList);
-            addField("",addButtons);
+            addField("",addBuff);
+            addField("",addDebuff);
+            addField("",addDamage);
                         addField("Selected effect name",effectName);addField("Selected effect Spell ID or Name",effectSpell);
             addField("Display condition",condition);
             addField("",showCompact);addField("",showDetailed);
