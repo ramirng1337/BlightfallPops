@@ -328,39 +328,48 @@ namespace BlightfallPopsDesktop {
             var clearImage=BuilderButton("Use Spell ID / default icon");
             var addBuff=BuilderButton("+ Add Buff");
             var addDebuff=BuilderButton("+ Add Debuff");
+            var addDamage=BuilderButton("+ Add Secondary Damage");
             var reuseEffect=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White,Height=29,MaxDropDownItems=8,IntegralHeight=false};
             var templateSearch=BuilderText("");
             var reuseButton=BuilderButton("+ Add selected template");
             var templateEffects=new List<CustomEffect>();
-            var addButtons=new TableLayoutPanel{ColumnCount=2,RowCount=1,Margin=Padding.Empty,Padding=Padding.Empty,BackColor=Color.FromArgb(25,29,34)};
-            addButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
-            addButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
-            addBuff.Dock=DockStyle.Fill;addDebuff.Dock=DockStyle.Fill;
+            var addButtons=new TableLayoutPanel{ColumnCount=3,RowCount=1,Margin=Padding.Empty,Padding=Padding.Empty,BackColor=Color.FromArgb(25,29,34)};
+            addButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,29));
+            addButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,29));
+            addButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,42));
+            addBuff.Dock=DockStyle.Fill;addDebuff.Dock=DockStyle.Fill;addDamage.Dock=DockStyle.Fill;
             addBuff.Margin=new Padding(0,0,3,0);addDebuff.Margin=new Padding(3,0,0,0);
-            addButtons.Controls.Add(addBuff,0,0);addButtons.Controls.Add(addDebuff,1,0);
+            addButtons.Controls.Add(addBuff,0,0);addButtons.Controls.Add(addDebuff,1,0);addButtons.Controls.Add(addDamage,2,0);
             // Separate buff/debuff selectors; the hidden master list preserves the
             // existing editing and save logic, including its selected index.
             var effects=new ListBox();
             var buffList=new ListBox{Dock=DockStyle.Fill,BackColor=Color.FromArgb(35,40,47),ForeColor=Color.White,BorderStyle=BorderStyle.FixedSingle,IntegralHeight=false};
+            var damageList=new ListBox{Dock=DockStyle.Fill,BackColor=Color.FromArgb(35,40,47),ForeColor=Color.White,BorderStyle=BorderStyle.FixedSingle,IntegralHeight=false};
             var debuffList=new ListBox{Dock=DockStyle.Fill,BackColor=Color.FromArgb(35,40,47),ForeColor=Color.White,BorderStyle=BorderStyle.FixedSingle,IntegralHeight=false};
-            var effectLists=new TableLayoutPanel{ColumnCount=2,RowCount=2,Margin=Padding.Empty,Padding=Padding.Empty,BackColor=Color.FromArgb(25,29,34)};
-            effectLists.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
-            effectLists.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
+            var effectLists=new TableLayoutPanel{ColumnCount=3,RowCount=2,Margin=Padding.Empty,Padding=Padding.Empty,BackColor=Color.FromArgb(25,29,34)};
+            effectLists.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,33));
+            effectLists.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,33));
+            effectLists.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,34));
             effectLists.RowStyles.Add(new RowStyle(SizeType.Absolute,18));
             effectLists.RowStyles.Add(new RowStyle(SizeType.Percent,100));
             effectLists.Controls.Add(new Label{Text="BUFFS",ForeColor=dim,Dock=DockStyle.Fill,Font=new Font("Segoe UI",8,FontStyle.Bold)},0,0);
             effectLists.Controls.Add(new Label{Text="DEBUFFS",ForeColor=dim,Dock=DockStyle.Fill,Font=new Font("Segoe UI",8,FontStyle.Bold)},1,0);
+            effectLists.Controls.Add(new Label{Text="SECONDARY DAMAGE",ForeColor=dim,Dock=DockStyle.Fill,Font=new Font("Segoe UI",8,FontStyle.Bold)},2,0);
             buffList.Margin=new Padding(0,0,4,0);debuffList.Margin=new Padding(4,0,0,0);
-            effectLists.Controls.Add(buffList,0,1);effectLists.Controls.Add(debuffList,1,1);
-            var buffIndices=new List<int>();var debuffIndices=new List<int>();
+            effectLists.Controls.Add(buffList,0,1);effectLists.Controls.Add(debuffList,1,1);effectLists.Controls.Add(damageList,2,1);
+            var buffIndices=new List<int>();var debuffIndices=new List<int>();var damageIndices=new List<int>();
             bool selectingEffect=false;
             buffList.SelectedIndexChanged+=delegate{
                 if(selectingEffect||buffList.SelectedIndex<0)return;
-                selectingEffect=true;debuffList.ClearSelected();effects.SelectedIndex=buffIndices[buffList.SelectedIndex];selectingEffect=false;
+                selectingEffect=true;debuffList.ClearSelected();damageList.ClearSelected();effects.SelectedIndex=buffIndices[buffList.SelectedIndex];selectingEffect=false;
             };
             debuffList.SelectedIndexChanged+=delegate{
                 if(selectingEffect||debuffList.SelectedIndex<0)return;
-                selectingEffect=true;buffList.ClearSelected();effects.SelectedIndex=debuffIndices[debuffList.SelectedIndex];selectingEffect=false;
+                selectingEffect=true;buffList.ClearSelected();damageList.ClearSelected();effects.SelectedIndex=debuffIndices[debuffList.SelectedIndex];selectingEffect=false;
+            };
+            damageList.SelectedIndexChanged+=delegate{
+                if(selectingEffect||damageList.SelectedIndex<0)return;
+                selectingEffect=true;buffList.ClearSelected();debuffList.ClearSelected();effects.SelectedIndex=damageIndices[damageList.SelectedIndex];selectingEffect=false;
             };
             var effectName=BuilderText("");var effectSpell=BuilderText("");
             var effectType=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White};
@@ -376,7 +385,7 @@ namespace BlightfallPopsDesktop {
             addField("Find saved effect template",templateSearch);
             addField("Select saved effect",reuseEffect);addField("",reuseButton);
             activeFields=effectFields;
-            addField("Linked buffs / debuffs",effectLists);addField("",addButtons);
+            addField("Linked buffs / debuffs / secondary damage",effectLists);addField("",addButtons);
                         addField("Selected effect name",effectName);addField("Selected effect Spell ID or Name",effectSpell);
             addField("Display condition",condition);
             addField("",showCompact);addField("",showDetailed);
@@ -468,11 +477,12 @@ namespace BlightfallPopsDesktop {
             };
             Action fillEffects=delegate{
                 int previous=effects.SelectedIndex;
-                selectingEffect=true;effects.Items.Clear();buffList.Items.Clear();debuffList.Items.Clear();buffIndices.Clear();debuffIndices.Clear();
+                selectingEffect=true;effects.Items.Clear();buffList.Items.Clear();debuffList.Items.Clear();damageList.Items.Clear();buffIndices.Clear();debuffIndices.Clear();damageIndices.Clear();
                 for(int n=0;n<card.Effects.Count;n++){
                     var e=card.Effects[n];
                     effects.Items.Add(e.Type+": "+e.Name+" ["+e.SpellId+"]");
                     if(e.Type=="Debuff"){debuffIndices.Add(n);debuffList.Items.Add(e.Name+" ["+e.SpellId+"]");}
+                    else if(e.Type=="Damage"){damageIndices.Add(n);damageList.Items.Add(e.Name+" ["+e.SpellId+"]");}
                     else{buffIndices.Add(n);buffList.Items.Add(e.Name+" ["+e.SpellId+"]");}
                 }
                 selectingEffect=false;
@@ -555,7 +565,7 @@ namespace BlightfallPopsDesktop {
             mainIcon.Click+=delegate{imageButton.PerformClick();};
             Action<string> createEffect=delegate(string type){
                 // Save the current field edits in memory, then create a correctly typed effect.
-                var created=new CustomEffect{Type=type,Name=type=="Buff"?"New Buff":"New Debuff",Condition="Active at event",ShowCompact=false,ShowDetailed=true};
+                var created=new CustomEffect{Type=type,Name=type=="Buff"?"New Buff":type=="Damage"?"New Damage":"New Debuff",Condition="Active at event",ShowCompact=false,ShowDetailed=true};
                 card.Effects.Add(created);
                 fillEffects();
                 effects.SelectedIndex=card.Effects.Count-1;
@@ -563,6 +573,7 @@ namespace BlightfallPopsDesktop {
                 statusLabel.Text=type+" added to draft. Enter name and Spell ID, then Save selected effect.";
             };
             addBuff.Click+=delegate{createEffect("Buff");};
+            addDamage.Click+=delegate{createEffect("Damage");};
             addDebuff.Click+=delegate{createEffect("Debuff");};
             effects.SelectedIndexChanged+=delegate{
                 int i=effects.SelectedIndex;bool enabled=i>=0&&i<card.Effects.Count;
