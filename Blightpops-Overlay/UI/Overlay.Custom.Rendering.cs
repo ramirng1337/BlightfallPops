@@ -126,8 +126,11 @@ namespace BlightfallPopsDesktop {
             card.Controls.Add(CustomArtwork(CustomDamageIcon(definition,mainId),60,36,23));
             card.Controls.Add(Label(Format(mainDamage),dim,88,37,90));
             int secondaryX=Math.Max(195,card.Width/2-25);
-            card.Controls.Add(CustomArtwork(secondaryId==null?null:CustomDamageIcon(definition,secondaryId),secondaryX,36,23));
-            card.Controls.Add(Label(Format(secondaryDamage),dim,secondaryX+28,37,90));
+            // Only show the secondary slot when this cast actually has secondary damage.
+            if(secondaryId!=null&&secondaryDamage>0) {
+                card.Controls.Add(CustomArtwork(CustomDamageIcon(definition,secondaryId),secondaryX,36,23));
+                card.Controls.Add(Label(Format(secondaryDamage),dim,secondaryX+28,37,90));
+            }
             card.Controls.Add(Label(Format(total),green,Math.Max(270,card.Width-112),8,100,true));
             if(!CustomIsExpanded(entry))return;
             int y=70;
