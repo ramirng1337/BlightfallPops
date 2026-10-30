@@ -78,6 +78,7 @@ namespace BlightfallPopsDesktop {
             foreach(var watched in tracker.WatchedAuras)
                 result.WatchedAuras[watched.Key]=watched.Value;
             foreach(var watched in tracker.WatchedDamage)result.WatchedDamage[watched.Key]=watched.Value;
+            ConfigureCustomEvents(result);
             long size=new FileInfo(path).Length;
             while(result.Position<size){
                 long previous=result.Position;

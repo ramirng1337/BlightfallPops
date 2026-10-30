@@ -15,6 +15,54 @@ namespace BlightfallPopsDesktop {
     // Combat log parsing and event tracking.
     internal sealed class Tracker {
         public readonly List<Entry> Entries=new List<Entry>();
+        // Custom events remain separate until their own card renderer is available.
+        public readonly List<Entry> CustomEntries=new List<Entry>();
+        internal sealed class CustomEventRule {
+            public string Name, Spell;
+            public int WindowMs;
+            public readonly Dictionary<string,string> Damage=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase);
+        }
+        public readonly List<CustomEventRule> CustomRules=new List<CustomEventRule>();
+        private readonly Dictionary<string,Entry> customRecent=new Dictionary<string,Entry>(StringComparer.Ordinal);
+        private readonly Dictionary<string,CustomEventRule> customEntryRules=new Dictionary<string,CustomEventRule>(StringComparer.Ordinal);
+        private int customNumber;
+        private static bool MatchSpell(string configured,string id,string name) {
+            if(String.IsNullOrWhiteSpace(configured))return false;
+            configured=configured.Trim();
+            long numeric;
+            return long.TryParse(configured,out numeric)
+                ? String.Equals(configured,id,StringComparison.Ordinal)
+                : String.Equals(configured,name,StringComparison.OrdinalIgnoreCase);
+        }
+        private void RecordCustomEvent(string kind,string source,string player,string dest,string spell,string spellName,DateTime time) {
+            if(!source.StartsWith("Player-",StringComparison.Ordinal))return;
+            if(kind=="SPELL_CAST_SUCCESS") {
+                foreach(var rule in CustomRules) {
+                    if(!MatchSpell(rule.Spell,spell,spellName))continue;
+                    string key=source+"|"+rule.Spell;
+                    var entry=new Entry{Time=time,Sequence=++nextSequence,Segment=Segment,
+                        PlayerGuid=source,PlayerName=player,Number=++customNumber};
+                    CustomEntries.Add(entry);customRecent[key]=entry;customEntryRules[key]=rule;
+                }
+                return;
+            }
+            if(kind!="SPELL_DAMAGE"&&kind!="SPELL_PERIODIC_DAMAGE")return;
+            foreach(var pair in customRecent) {
+                if(!pair.Key.StartsWith(source+"|",StringComparison.Ordinal))continue;
+                CustomEventRule rule;
+                if(!customEntryRules.TryGetValue(pair.Key,out rule))continue;
+                double elapsed=(time-pair.Value.Time).TotalMilliseconds;
+                if(elapsed<0||elapsed>rule.WindowMs)continue;
+                bool matched=false;
+                foreach(var damage in rule.Damage)
+                    if(MatchSpell(damage.Key,spell,spellName)){matched=true;break;}
+                if(!matched)continue;
+                pair.Value.Hits.Add(new Hit{Kind="DM",SpellId=spell,SpellName=spellName,
+                    Amount=Amount(currentFields),Overkill=Overkill(currentFields),
+                    Target=F(currentFields,6),TargetGuid=dest,Crit=Crit(currentFields)});
+            }
+        }
+        private List<string> currentFields;
         public readonly Dictionary<string,CombatPlayer> Players=new Dictionary<string,CombatPlayer>(StringComparer.Ordinal);
         public List<CombatPlayer> GetPlayers() {
             var result=new List<CombatPlayer>(Players.Values);
@@ -105,7 +153,7 @@ namespace BlightfallPopsDesktop {
         private void Notify(){if(Changed!=null)Changed();}
         // Reset session tracking.
         public void Reset(long at=0) {
-            Entries.Clear();Players.Clear();otherPending.Clear();otherRecent.Clear();otherCastNumbers.Clear();pending=null;recentBlightfall=null;recentBeast=null;beasts.Clear();attempts.Clear();auraStates.Clear();scythe.Clear();soulReaper.Clear();
+            Entries.Clear();CustomEntries.Clear();customRecent.Clear();customEntryRules.Clear();customNumber=0;Players.Clear();otherPending.Clear();otherRecent.Clear();otherCastNumbers.Clear();pending=null;recentBlightfall=null;recentBeast=null;beasts.Clear();attempts.Clear();auraStates.Clear();scythe.Clear();soulReaper.Clear();
             castNumber=beastNumber=pullNumber=0;nextSequence=0;Guid=Player=Segment=encounter=remainder="";
             logDecoder.Reset();lastOwnCombat=DateTime.MinValue;Position=at;SkipFirstLine=at>0;Notify();
         }
@@ -201,6 +249,8 @@ namespace BlightfallPopsDesktop {
             string source=F(f,1), dest=F(f,5), spell=F(f,9);
             RecordPlayer(source,F(f,2),time);
             RecordPlayer(dest,F(f,6),time);
+            currentFields=f;
+            RecordCustomEvent(kind,source,F(f,2),dest,spell,F(f,10),time);
             if(kind.StartsWith("SPELL_AURA_",StringComparison.Ordinal))RecordAura(kind,spell,dest,f);
             if(kind=="SPELL_SUMMON"&&spell=="434237"&&source.StartsWith("Player-")&&OwnFlags(F(f,3))&&(Guid==""||Guid==source)) {
                 if(Guid==""){Guid=source;Player=F(f,2);}UpdatePull(time);

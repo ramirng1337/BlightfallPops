@@ -152,7 +152,9 @@ namespace BlightfallPopsDesktop {
             FormClosing+=delegate {EndResizePreview(false);Save();poll.Stop();toolTip.Dispose();if(artwork!=null)artwork.Dispose();foreach(var image in spellIcons.Values)image.Dispose();foreach(var font in labelFonts.Values)font.Dispose();};
             try{foreach(var custom in ReadCustomCards())if((custom.SpellId=="1271967"||custom.SpellId=="1271974"))foreach(var effect in custom.Effects)
                 if(!String.IsNullOrWhiteSpace(effect.SpellId)){if(effect.Type=="Damage")tracker.WatchedDamage[effect.SpellId.Trim()]=effect.Name;else {tracker.WatchedAuras[effect.SpellId.Trim()]=effect.Type;customAuraInfo[effect.SpellId.Trim()]=effect;}}}catch{}
-            tracker.WindowMs=BlightfallWindowMs(settings.WindowMs);tracker.TrackAllPlayers=true;tracker.Changed+=delegate {dirty=true;};
+            tracker.WindowMs=BlightfallWindowMs(settings.WindowMs);
+            ConfigureCustomEvents(tracker);
+            tracker.TrackAllPlayers=true;tracker.Changed+=delegate {dirty=true;};
             poll.Interval=350;poll.Tick+=delegate {if(resizeStart.HasValue)return;
                 if(scanningFullLog){ContinueFullLogScan();UpdateLogButton();return;}
                 try {if(settings.WatchLog&&settings.Log!=""){
@@ -282,6 +284,19 @@ namespace BlightfallPopsDesktop {
             Action tip=delegate {toolTip.SetToolTip(button,caption+": "+(enabled()?"on":"off")+" — click to toggle");};
             button.Click+=delegate {toggle();tip();button.Invalidate();RefreshCards();Save();};
             tip();options.Controls.Add(button);return button;
+        }
+        // Load independent custom cast and damage rules from saved cards.
+        private static void ConfigureCustomEvents(Tracker target) {
+            foreach(var card in ReadCustomCards()) {
+                if(card==null||String.IsNullOrWhiteSpace(card.SpellId))continue;
+                if(card.SpellId=="1271967"||card.SpellId=="1271974"||card.SpellId=="434237")continue;
+                var rule=new Tracker.CustomEventRule{Name=card.Name,Spell=card.SpellId,
+                    WindowMs=card.WindowMs>0?card.WindowMs:1200};
+                if(card.Effects!=null)foreach(var effect in card.Effects)
+                    if(effect!=null&&effect.Type=="Damage"&&!String.IsNullOrWhiteSpace(effect.SpellId))
+                        rule.Damage[effect.SpellId.Trim()]=effect.Name;
+                target.CustomRules.Add(rule);
+            }
         }
         // Existing settings remain the fallback for cards saved before window configuration.
         private static int BlightfallWindowMs(int fallback) {

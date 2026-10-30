@@ -657,7 +657,8 @@ namespace BlightfallPopsDesktop {
                         if(effect.Type=="Damage")tracker.WatchedDamage[effect.SpellId]=effect.Name;
                         else {tracker.WatchedAuras[effect.SpellId]=effect.Type;customAuraInfo[effect.SpellId]=effect;}
                     }
-                    statusLabel.Text="Saved. Linked aura tracking applies to subsequent Blightfall casts. Re-scan the log for older events.";
+                    tracker.CustomRules.Clear();ConfigureCustomEvents(tracker);
+                    statusLabel.Text="Saved. Re-scan the log to rebuild custom event tracking.";
                 }catch(Exception ex){MessageBox.Show(editor,ex.Message,"Unable to save",MessageBoxButtons.OK,MessageBoxIcon.Error);}
             };
             var grip=new Panel{Size=new Size(18,18),Cursor=Cursors.SizeNWSE,BackColor=Color.FromArgb(43,48,52),Anchor=AnchorStyles.Bottom|AnchorStyles.Right};
