@@ -71,7 +71,7 @@ namespace BlightfallPopsDesktop {
             return ids.Count;
         }
         private int CustomCardHeight(Entry entry) {
-            return CustomIsExpanded(entry)?Math.Max(88,62+entry.Hits.Count*35+CustomActiveGroupCount(entry)*29):(ShowMiniCards?68:66);
+            return CustomIsExpanded(entry)?Math.Max(88,62+entry.Hits.Count*35+CustomActiveGroupCount(entry)*19):(ShowMiniCards?68:66);
         }
         private string CustomCardSignature(Entry entry,int width) {
             long total=0;foreach(var hit in entry.Hits)total+=hit.Amount;
@@ -103,14 +103,13 @@ namespace BlightfallPopsDesktop {
                 CustomDamageSummary summary;
                 if(!groups.TryGetValue(groupId,out summary))continue;
                 bool secondary=definition!=null&&!String.Equals(groupId,definition.SpellId,StringComparison.OrdinalIgnoreCase);
-                string groupName=String.IsNullOrWhiteSpace(summary.Name)?groupId:summary.Name;
-                string headingText=(secondary?"SECONDARY  ":"MAIN  ")+groupName+" ["+groupId+"]  •  "+
-                    Format(summary.Damage)+"  •  "+summary.Hits+(summary.Hits==1?" hit":" hits");
-                var section=new BufferedPanel{Left=8,Top=y,Width=Math.Max(80,card.Width-16),Height=26,
-                    BackColor=Color.FromArgb(38,46,53)};
-                section.Controls.Add(new Panel{Left=0,Top=0,Width=3,Height=26,BackColor=secondary?Color.FromArgb(92,160,208):green});
-                section.Controls.Add(Label(headingText,secondary?Color.FromArgb(157,201,232):Color.White,9,4,Math.Max(40,section.Width-16)));
-                card.Controls.Add(section);y+=29;
+                // Minimal separator; the actual damage events stay directly below.
+                var section=new BufferedPanel{Left=8,Top=y,Width=Math.Max(80,card.Width-16),Height=16,
+                    BackColor=Color.FromArgb(30,36,42)};
+                section.Controls.Add(new Panel{Left=0,Top=0,Width=2,Height=16,BackColor=secondary?Color.FromArgb(92,160,208):green});
+                section.Controls.Add(Label(secondary?"Secondary Damage Effect":"Main Damage Effect",
+                    dim,8,0,Math.Max(40,section.Width-16)));
+                card.Controls.Add(section);y+=19;
                 foreach(var hit in entry.Hits) {
                     if(!String.Equals(CustomHitGroup(hit),groupId,StringComparison.OrdinalIgnoreCase))continue;
                     var line=new BufferedPanel{Left=8,Top=y,Width=Math.Max(80,card.Width-16),Height=32,BackColor=Color.FromArgb(23,28,33)};
