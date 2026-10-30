@@ -9,6 +9,7 @@ namespace BlightfallPopsDesktop {
         private PictureBox CustomPlaceholder(int x,int y,int size) {
             var icon=new PictureBox{Left=x,Top=y,Width=size,Height=size,BackColor=Color.FromArgb(45,51,59),SizeMode=PictureBoxSizeMode.Zoom};
             icon.Paint+=delegate(object sender,PaintEventArgs e){
+                if(icon.Image!=null)return;
                 var g=e.Graphics;
                 using(var pen=new Pen(Color.FromArgb(145,164,184),1.4f)){
                     int margin=Math.Max(5,size/5),w=Math.Max(8,size-2*margin);
@@ -47,7 +48,7 @@ namespace BlightfallPopsDesktop {
         private readonly Dictionary<Entry,bool> customExpanded=new Dictionary<Entry,bool>();
         private bool CustomIsExpanded(Entry entry){bool open;return customExpanded.TryGetValue(entry,out open)&&open;}
         private int CustomCardHeight(Entry entry) {
-            return ShowMiniCards?68:CustomIsExpanded(entry)?Math.Max(88,62+entry.Hits.Count*35):66;
+            return CustomIsExpanded(entry)?Math.Max(88,62+entry.Hits.Count*35):(ShowMiniCards?68:66);
         }
         private string CustomCardSignature(Entry entry,int width) {
             long total=0;foreach(var hit in entry.Hits)total+=hit.Amount;
@@ -61,17 +62,18 @@ namespace BlightfallPopsDesktop {
                 "  #"+entry.Number+"  "+entry.Time.ToString("HH:mm:ss");
             var definition=CustomDefinition(entry);
             var eventIcon=CustomArtwork(definition==null?null:definition.IconPath,10,10,42);
+            eventIcon.Cursor=Cursors.Hand;
             card.Controls.Add(eventIcon);
             var heading=Label((CustomIsExpanded(entry)?"▾  ":"▸  ")+title,Color.White,60,8,Math.Max(80,card.Width-72),true);
             heading.Cursor=Cursors.Hand;
             Action toggle=delegate{customExpanded[entry]=!CustomIsExpanded(entry);RefreshCards();};
-            heading.Click+=delegate{toggle();};card.Click+=delegate{toggle();};
+            heading.Click+=delegate{toggle();};eventIcon.Click+=delegate{toggle();};card.Click+=delegate{toggle();};
             card.Controls.Add(heading);
             long total=0;int crits=0;
             foreach(var hit in entry.Hits){total+=hit.Amount;if(hit.Crit)crits++;}
             card.Controls.Add(Label(Format(total)+" damage  •  "+entry.Hits.Count+
                 " hits  •  "+crits+(crits==1?" crit":" crits"),dim,60,34,Math.Max(80,card.Width-72)));
-            if(ShowMiniCards||!CustomIsExpanded(entry))return;
+            if(!CustomIsExpanded(entry))return;
             int y=62;
             foreach(var hit in entry.Hits){
                 var line=new BufferedPanel{Left=8,Top=y,Width=Math.Max(80,card.Width-16),Height=32,BackColor=Color.FromArgb(23,28,33)};
