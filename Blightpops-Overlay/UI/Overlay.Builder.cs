@@ -370,14 +370,14 @@ namespace BlightfallPopsDesktop {
             var showCompact=new CheckBox{Text="Show in Compact",Checked=false,AutoSize=true,ForeColor=Color.White,BackColor=Color.FromArgb(25,29,34)};
             var showDetailed=new CheckBox{Text="Show in Detailed",Checked=true,AutoSize=true,ForeColor=Color.White,BackColor=Color.FromArgb(25,29,34)};
             var effectImage=BuilderButton("Choose effect icon (Asset Library)...");var saveEffect=BuilderButton("Save selected effect");var removeEffect=BuilderButton("Remove selected effect");
-            addField("Saved card",presets);addField("Card name",name);addField("Main Spell ID",spell);
+            addField("Saved card",presets);addField("Card name",name);addField("Main Spell ID or Name",spell);
             addField("Damage collection window (ms)",windowMs);
             addField("Main icon",imageButton);addField("",clearImage);
             addField("Find saved effect template",templateSearch);
             addField("Select saved effect",reuseEffect);addField("",reuseButton);
             activeFields=effectFields;
             addField("Linked buffs / debuffs",effectLists);addField("",addButtons);
-                        addField("Selected effect name",effectName);addField("Selected effect Spell ID",effectSpell);
+                        addField("Selected effect name",effectName);addField("Selected effect Spell ID or Name",effectSpell);
             addField("Display condition",condition);
             addField("",showCompact);addField("",showDetailed);
             addField("Effect icon — optional custom image",effectImage);addField("",saveEffect);addField("",removeEffect);
@@ -641,8 +641,13 @@ namespace BlightfallPopsDesktop {
             };
             save.Click+=delegate{
                 // Persist the current draft only on explicit Save card.
-                int id; if(!int.TryParse(spell.Text,out id)||id<=0){MessageBox.Show(editor,"Enter a valid numeric main Spell ID.","Event Card Builder",MessageBoxButtons.OK,MessageBoxIcon.Warning);return;}
-                foreach(var effect in card.Effects){int effectId;if(!int.TryParse(effect.SpellId,out effectId)||effectId<=0){MessageBox.Show(editor,"Each linked effect needs a valid numeric Spell ID.","Event Card Builder",MessageBoxButtons.OK,MessageBoxIcon.Warning);return;}}
+                if(String.IsNullOrWhiteSpace(spell.Text)){MessageBox.Show(editor,"Enter a main Spell ID or name.","Event Card Builder",MessageBoxButtons.OK,MessageBoxIcon.Warning);return;}
+                foreach(var effect in card.Effects){int effectId;
+                    bool numeric=int.TryParse(effect.SpellId,out effectId)&&effectId>0;
+                    if(String.IsNullOrWhiteSpace(effect.SpellId)||(effect.Type!="Damage"&&!numeric)){
+                        MessageBox.Show(editor,effect.Type=="Damage"?"Each damage effect needs a Spell ID or name.":"Buffs and debuffs currently require a numeric Spell ID.","Event Card Builder",MessageBoxButtons.OK,MessageBoxIcon.Warning);return;
+                    }
+                }
                 int selected=presets.SelectedIndex;
                 card.WindowMs=(int)windowMs.Value;
                 if(selected>0&&selected<=definitions.Count)definitions[selected-1]=card;else definitions.Add(card);

@@ -286,7 +286,20 @@ namespace BlightfallPopsDesktop {
             if(ms<0||ms>WindowMs)return;
             bool plagueHit=spell=="1241171"||spell=="1241167";
             string watchedName=null;
-            if(!plagueHit&&!WatchedDamage.TryGetValue(spell,out watchedName))return;
+            if(!plagueHit){
+                if(!WatchedDamage.TryGetValue(spell,out watchedName)){
+                    // Numeric keys take precedence; names are a fallback for configured damage spells.
+                    string spellName=F(f,10);
+                    foreach(var watched in WatchedDamage){
+                        long numericId;
+                        if(long.TryParse(watched.Key,out numericId))continue;
+                        if(String.Equals(watched.Key,spellName,StringComparison.OrdinalIgnoreCase)){
+                            watchedName=watched.Value;break;
+                        }
+                    }
+                    if(watchedName==null)return;
+                }
+            }
             long damage=Amount(f);string plague=spell=="1241171"?"DP":spell=="1241167"?"VP":"DM";
             if(plague=="DP")eruption.Dread+=damage;else if(plague=="VP")eruption.Virulent+=damage;
             var hit=new Hit{Kind=plague,SpellId=spell,SpellName=F(f,10),Amount=damage,Overkill=Overkill(f),Target=F(f,6),TargetGuid=dest,Crit=Crit(f)};
