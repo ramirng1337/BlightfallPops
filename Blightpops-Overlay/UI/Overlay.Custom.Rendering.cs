@@ -91,7 +91,7 @@ namespace BlightfallPopsDesktop {
             return ids.Count;
         }
         private int CustomCardHeight(Entry entry) {
-            return CustomIsExpanded(entry)?Math.Max(88,70+entry.Hits.Count*35+CustomSecondaryCount(entry)*19):(ShowMiniCards?68:66);
+            return CustomIsExpanded(entry)?Math.Max(88,70+entry.Hits.Count*35+CustomSecondaryCount(entry)*19):(ShowMiniCards?55:55);
         }
         private string CustomCardSignature(Entry entry,int width) {
             long total=0;foreach(var hit in entry.Hits)total+=hit.Amount;
@@ -104,10 +104,10 @@ namespace BlightfallPopsDesktop {
             string title=(String.IsNullOrWhiteSpace(entry.CustomName)?"Custom event":entry.CustomName)+
                 "  #"+entry.Number+"  "+entry.Time.ToString("HH:mm:ss");
             var definition=CustomDefinition(entry);
-            var eventIcon=CustomArtwork(definition==null?null:definition.IconPath,10,10,42);
+            var eventIcon=CustomArtwork(definition==null?null:definition.IconPath,9,9,36);
             eventIcon.Cursor=Cursors.Hand;
             card.Controls.Add(eventIcon);
-            var heading=Label((CustomIsExpanded(entry)?"▾  ":"▸  ")+title,Color.White,60,8,Math.Max(80,card.Width-72),true);
+            var heading=Label((CustomIsExpanded(entry)?"▾  ":"▸  ")+title,Color.White,52,3,Math.Max(40,card.Width-175),true);
             heading.Cursor=Cursors.Hand;
             Action toggle=delegate{customExpanded[entry]=!CustomIsExpanded(entry);RefreshCards();};
             heading.Click+=delegate{toggle();};eventIcon.Click+=delegate{toggle();};card.Click+=delegate{toggle();};
@@ -123,15 +123,17 @@ namespace BlightfallPopsDesktop {
             }
             long total=mainDamage+secondaryDamage;
             // Beast-style summary: main, secondary, total.
-            card.Controls.Add(CustomArtwork(CustomDamageIcon(definition,mainId),60,36,23));
-            card.Controls.Add(Label(Format(mainDamage),dim,88,37,90));
-            int secondaryX=Math.Max(195,card.Width/2-25);
+            card.Controls.Add(CustomArtwork(CustomDamageIcon(definition,mainId),55,29,23));
+            card.Controls.Add(Label(Format(mainDamage),dim,82,28,Math.Max(70,card.Width/2-100)));
+            int secondaryX=Math.Max(180,card.Width/2-10);
             // Only show the secondary slot when this cast actually has secondary damage.
             if(secondaryId!=null&&secondaryDamage>0) {
-                card.Controls.Add(CustomArtwork(CustomDamageIcon(definition,secondaryId),secondaryX,36,23));
-                card.Controls.Add(Label(Format(secondaryDamage),dim,secondaryX+28,37,90));
+                card.Controls.Add(CustomArtwork(CustomDamageIcon(definition,secondaryId),secondaryX,29,23));
+                card.Controls.Add(Label(Format(secondaryDamage),dim,secondaryX+27,28,Math.Max(65,card.Width-secondaryX-35)));
             }
-            card.Controls.Add(Label(Format(total),green,Math.Max(270,card.Width-112),8,100,true));
+            var totalLabel=Label(Format(total),green,Math.Max(52,card.Width-121),3,112,true);
+            totalLabel.TextAlign=ContentAlignment.TopRight;
+            card.Controls.Add(totalLabel);
             if(!CustomIsExpanded(entry))return;
             int y=70;
             var order=CustomGroupOrder(entry,definition);
