@@ -14,34 +14,8 @@ using System.Windows.Forms;
 namespace BlightfallPopsDesktop {
     // Spell icons and aura status indicators.
     internal sealed partial class Overlay {
-        // Cache built-in WoW icons.
-        private void LoadSpellIcons(){
-            var files=new Dictionary<string,string>{
-                {"BF","inv_nullstone_shadow.jpg"},{"DP","inv12_ability_deathknight_empowereddreadplague.jpg"},
-                {"VP","ability_creature_disease_02.jpg"},{"SC","inv_polearm_2h_mawnecromancerboss_d_01_darkblue.jpg"},
-                {"SR","ability_deathknight_soulreaper.jpg"},
-                {"BB","achievement_nazmir_boss_bloodofghuun.jpg"},{"CB","inv_artifact_bloodoftheassassinated.jpg"},
-                {"BiL","ability_ironmaidens_corruptedblood.jpg"}};
-            foreach(var item in files)try{
-                using(var stream=Assembly.GetExecutingAssembly().GetManifestResourceStream("BlightfallPops.Icons."+item.Value)){
-                    if(stream!=null)using(var decoded=Image.FromStream(stream))spellIcons[item.Key]=new Bitmap(decoded);
-                }
-            }catch{} // A damaged icon should not prevent combat log tracking.
-            // A legible fallback remains available if an embedded resource is damaged.
-            if(!spellIcons.ContainsKey("SR"))using(var badge=new Bitmap(64,64)){
-                using(var g=Graphics.FromImage(badge)){
-                    g.Clear(Color.FromArgb(40,23,49));
-                    using(var brush=new SolidBrush(Color.FromArgb(177,139,198)))
-                        g.FillEllipse(brush,8,8,48,48);
-                    using(var brush=new SolidBrush(Color.FromArgb(29,17,35)))
-                        g.FillEllipse(brush,13,13,38,38);
-                    using(var font=new Font("Segoe UI",17,FontStyle.Bold))
-                        TextRenderer.DrawText(g,"SR",font,new Rectangle(0,0,64,64),Color.FromArgb(225,204,235),
-                            TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPadding);
-                }
-                spellIcons["SR"]=new Bitmap(badge);
-            }
-        }
+        // Load shared spell images once per overlay.
+        private void LoadSpellIcons(){ SpellIconCache.LoadInto(spellIcons); }
         private static string SoulReaperTip(Entry entry){
             return entry.SoulReaperTargets>0
                 ?"Soul Reaper: on "+entry.SoulReaperTargets+" enemy target"+(entry.SoulReaperTargets==1?"":"s")+" at Blightfall cast"
