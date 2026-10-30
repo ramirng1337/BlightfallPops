@@ -53,7 +53,7 @@ jobs:
         run: |
           $csc = "$env:WINDIR/Microsoft.NET/Framework/v4.0.30319/csc.exe"
           $testSource = (Resolve-Path -LiteralPath ".\Tests\TrackerTests.cs").Path
-          & $csc /nologo /target:exe /codepage:65001 /main:TrackerTests /out:TrackerTests.exe /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Web.Extensions.dll /reference:System.IO.Compression.dll BlightfallPops.cs UI\Overlay.cs UI\Overlay.Cards.cs UI\Overlay.Rendering.cs UI\Overlay.Compare.cs UI\UiComponents.cs Core\CombatModels.cs Configuration\Settings.cs Tracking\Tracker.cs Updater.cs VersionInfo.cs $testSource
+          & $csc /nologo /target:exe /codepage:65001 /main:TrackerTests /out:TrackerTests.exe /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Web.Extensions.dll /reference:System.IO.Compression.dll BlightfallPops.cs UI\Overlay.cs UI\Overlay.Cards.cs UI\Overlay.Rendering.cs UI\Overlay.Compare.cs UI\Overlay.Builder.cs UI\UiComponents.cs Core\CombatModels.cs Configuration\Settings.cs Tracking\Tracker.cs Updater.cs VersionInfo.cs $testSource
           if ($LASTEXITCODE -ne 0) { throw "Tracker test compilation failed" }
           & ./TrackerTests.exe
           if ($LASTEXITCODE -ne 0) { throw "Tracker regression tests failed" }
@@ -64,7 +64,7 @@ jobs:
         run: |
           $csc = "$env:WINDIR/Microsoft.NET/Framework/v4.0.30319/csc.exe"
           $testSource = (Resolve-Path -LiteralPath ".\Tests\UiPerformanceTests.cs").Path
-          & $csc /nologo /target:exe /codepage:65001 /main:UiPerformanceTests /out:UiPerformanceTests.exe /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Web.Extensions.dll /reference:System.IO.Compression.dll BlightfallPops.cs UI\Overlay.cs UI\Overlay.Cards.cs UI\Overlay.Rendering.cs UI\Overlay.Compare.cs UI\UiComponents.cs Core\CombatModels.cs Configuration\Settings.cs Tracking\Tracker.cs Updater.cs VersionInfo.cs $testSource
+          & $csc /nologo /target:exe /codepage:65001 /main:UiPerformanceTests /out:UiPerformanceTests.exe /reference:System.dll /reference:System.Core.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll /reference:System.Web.Extensions.dll /reference:System.IO.Compression.dll BlightfallPops.cs UI\Overlay.cs UI\Overlay.Cards.cs UI\Overlay.Rendering.cs UI\Overlay.Compare.cs UI\Overlay.Builder.cs UI\UiComponents.cs Core\CombatModels.cs Configuration\Settings.cs Tracking\Tracker.cs Updater.cs VersionInfo.cs $testSource
           if ($LASTEXITCODE -ne 0) { throw "UI test compilation failed" }
           & ./UiPerformanceTests.exe
           if ($LASTEXITCODE -ne 0) { throw "UI performance regression tests failed" }
