@@ -70,8 +70,28 @@ namespace BlightfallPopsDesktop {
             foreach(var hit in entry.Hits)ids.Add(CustomHitGroup(hit));
             return ids.Count;
         }
+        private string CustomMainId(Entry entry,CustomCard definition) {
+            if(definition!=null)foreach(var hit in entry.Hits)
+                if(String.Equals(CustomHitGroup(hit),definition.SpellId,StringComparison.OrdinalIgnoreCase))return CustomHitGroup(hit);
+            if(definition!=null&&definition.Effects!=null)
+                foreach(var effect in definition.Effects)
+                    if(effect!=null&&effect.Type=="Damage"&&!String.IsNullOrWhiteSpace(effect.SpellId))return effect.SpellId.Trim();
+            return entry.Hits.Count>0?CustomHitGroup(entry.Hits[0]):"";
+        }
+        private string CustomDamageIcon(CustomCard definition,string id) {
+            if(definition!=null&&definition.Effects!=null)
+                foreach(var effect in definition.Effects)
+                    if(effect!=null&&effect.Type=="Damage"&&String.Equals(effect.SpellId,id,StringComparison.OrdinalIgnoreCase))return effect.IconPath;
+            return definition==null?null:definition.IconPath;
+        }
+        private int CustomSecondaryCount(Entry entry) {
+            string main=CustomMainId(entry,CustomDefinition(entry));
+            var ids=new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach(var hit in entry.Hits)if(!String.Equals(CustomHitGroup(hit),main,StringComparison.OrdinalIgnoreCase))ids.Add(CustomHitGroup(hit));
+            return ids.Count;
+        }
         private int CustomCardHeight(Entry entry) {
-            return CustomIsExpanded(entry)?Math.Max(88,62+entry.Hits.Count*35+CustomActiveGroupCount(entry)*19):(ShowMiniCards?68:66);
+            return CustomIsExpanded(entry)?Math.Max(88,70+entry.Hits.Count*35+CustomSecondaryCount(entry)*19):(ShowMiniCards?68:66);
         }
         private string CustomCardSignature(Entry entry,int width) {
             long total=0;foreach(var hit in entry.Hits)total+=hit.Amount;
@@ -92,37 +112,44 @@ namespace BlightfallPopsDesktop {
             Action toggle=delegate{customExpanded[entry]=!CustomIsExpanded(entry);RefreshCards();};
             heading.Click+=delegate{toggle();};eventIcon.Click+=delegate{toggle();};card.Click+=delegate{toggle();};
             card.Controls.Add(heading);
-            long total=0;int crits=0;
-            foreach(var hit in entry.Hits){total+=hit.Amount;if(hit.Crit)crits++;}
-            card.Controls.Add(Label(Format(total)+" damage  •  "+entry.Hits.Count+
-                " hits  •  "+crits+(crits==1?" crit":" crits"),dim,60,34,Math.Max(80,card.Width-72)));
-            if(!CustomIsExpanded(entry))return;
-            int y=62;
             var groups=CustomDamageGroups(entry);
-            foreach(var groupId in CustomGroupOrder(entry,definition)) {
+            string mainId=CustomMainId(entry,definition);
+            long mainDamage=0,secondaryDamage=0;int crits=0;
+            string secondaryId=null;
+            foreach(var hit in entry.Hits) {
+                if(String.Equals(CustomHitGroup(hit),mainId,StringComparison.OrdinalIgnoreCase))mainDamage+=hit.Amount;
+                else {secondaryDamage+=hit.Amount;if(secondaryId==null)secondaryId=CustomHitGroup(hit);}
+                if(hit.Crit)crits++;
+            }
+            long total=mainDamage+secondaryDamage;
+            // Beast-style summary: main, secondary, total.
+            card.Controls.Add(CustomArtwork(CustomDamageIcon(definition,mainId),60,36,23));
+            card.Controls.Add(Label(Format(mainDamage),dim,88,37,90));
+            int secondaryX=Math.Max(195,card.Width/2-25);
+            card.Controls.Add(CustomArtwork(secondaryId==null?null:CustomDamageIcon(definition,secondaryId),secondaryX,36,23));
+            card.Controls.Add(Label(Format(secondaryDamage),dim,secondaryX+28,37,90));
+            card.Controls.Add(Label(Format(total),green,Math.Max(270,card.Width-112),8,100,true));
+            if(!CustomIsExpanded(entry))return;
+            int y=70;
+            var order=CustomGroupOrder(entry,definition);
+            order.RemoveAll(delegate(string id){return String.Equals(id,mainId,StringComparison.OrdinalIgnoreCase);});
+            order.Insert(0,mainId);
+            foreach(var groupId in order) {
                 CustomDamageSummary summary;
                 if(!groups.TryGetValue(groupId,out summary))continue;
-                bool secondary=definition!=null&&!String.Equals(groupId,definition.SpellId,StringComparison.OrdinalIgnoreCase);
-                // Minimal separator; the actual damage events stay directly below.
-                var section=new BufferedPanel{Left=8,Top=y,Width=Math.Max(80,card.Width-16),Height=16,
-                    BackColor=Color.FromArgb(30,36,42)};
-                section.Controls.Add(new Panel{Left=0,Top=0,Width=2,Height=16,BackColor=secondary?Color.FromArgb(92,160,208):green});
-                section.Controls.Add(Label(secondary?"Secondary Damage Effect":"Main Damage Effect",
-                    dim,8,0,Math.Max(40,section.Width-16)));
-                card.Controls.Add(section);y+=19;
+                bool secondary=!String.Equals(groupId,mainId,StringComparison.OrdinalIgnoreCase);
+                if(secondary) {
+                    var section=new BufferedPanel{Left=8,Top=y,Width=Math.Max(80,card.Width-16),Height=16,BackColor=Color.FromArgb(30,36,42)};
+                    section.Controls.Add(new Panel{Left=0,Top=0,Width=2,Height=16,BackColor=Color.FromArgb(92,160,208)});
+                    section.Controls.Add(Label("Secondary Damage Effect · "+(String.IsNullOrWhiteSpace(summary.Name)?groupId:summary.Name),dim,8,0,Math.Max(40,section.Width-16)));
+                    card.Controls.Add(section);y+=19;
+                }
                 foreach(var hit in entry.Hits) {
                     if(!String.Equals(CustomHitGroup(hit),groupId,StringComparison.OrdinalIgnoreCase))continue;
                     var line=new BufferedPanel{Left=8,Top=y,Width=Math.Max(80,card.Width-16),Height=32,BackColor=Color.FromArgb(23,28,33)};
                     string name=String.IsNullOrWhiteSpace(hit.SpellName)?hit.SpellId:hit.SpellName;
                     string target=String.IsNullOrWhiteSpace(hit.Target)?"Unknown target":hit.Target;
-                    string effectIcon=null;
-                    if(definition!=null&&definition.Effects!=null)
-                        foreach(var effect in definition.Effects)
-                            if(effect!=null&&effect.Type=="Damage"&&
-                               (String.Equals(effect.SpellId,hit.SpellId,StringComparison.OrdinalIgnoreCase)||
-                                String.Equals(effect.SpellId,hit.SpellName,StringComparison.OrdinalIgnoreCase))) {
-                                effectIcon=effect.IconPath;break;
-                            }
+                    string effectIcon=CustomDamageIcon(definition,CustomHitGroup(hit));
                     line.Controls.Add(CustomArtwork(effectIcon,4,3,26));
                     var amount=Label(Format(hit.Amount),hit.Crit?Color.Gold:dim,36,6,80);
                     var outcome=Label(hit.Crit?"Crit":"Hit",hit.Crit?Color.Gold:dim,122,6,44,true);
