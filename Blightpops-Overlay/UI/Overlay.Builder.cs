@@ -465,7 +465,7 @@ namespace BlightfallPopsDesktop {
                 foreach(var effect in card.Effects){
                     var pic=new PictureBox{Size=new Size(35,35),Margin=new Padding(2),BackColor=Color.FromArgb(45,51,59),SizeMode=PictureBoxSizeMode.Zoom,Cursor=Cursors.Hand};
                     setImage(previewIcon(effect.IconPath,effect.SpellId),pic);
-                    if(pic.Image==null){pic.Paint+=delegate(object sender,PaintEventArgs e){TextRenderer.DrawText(e.Graphics,"+",SystemFonts.MessageBoxFont,pic.ClientRectangle,dim,TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);};}
+                    if(pic.Image==null){pic.Paint+=delegate(object sender,PaintEventArgs e){using(var pen=new Pen(Color.FromArgb(145,164,184),1.4f)){e.Graphics.DrawRectangle(pen,8,8,19,19);e.Graphics.DrawEllipse(pen,11,11,5,5);e.Graphics.DrawLine(pen,9,25,17,18);e.Graphics.DrawLine(pen,17,18,26,25);}};}
                     var selectedEffect=effect;pic.Click+=delegate{effects.SelectedIndex=card.Effects.IndexOf(selectedEffect);effectImage.PerformClick();};
                     toolTip.SetToolTip(pic,effect.Name+" ("+effect.Type+", "+effect.SpellId+")");
                     effectPreview.Controls.Add(pic);
