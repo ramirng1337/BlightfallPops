@@ -13,7 +13,7 @@ using System.Windows.Forms;
 
 namespace BlightfallPopsDesktop {
     // Damage hit and target debuffs.
-    internal sealed class Hit { public string Kind, Target, TargetGuid; public long Amount, Overkill; public bool Crit; public readonly List<AuraSnapshot> Debuffs=new List<AuraSnapshot>(); }
+    internal sealed class Hit { public string Kind, SpellId, SpellName, Target, TargetGuid; public long Amount, Overkill; public bool Crit; public readonly List<AuraSnapshot> Debuffs=new List<AuraSnapshot>(); }
 
     // Aura state at event time.
     internal sealed class AuraSnapshot { public string Name, SpellId, IconPath; public bool? Active; public int Stacks; public bool HasDose; }

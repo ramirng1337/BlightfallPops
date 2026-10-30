@@ -211,7 +211,7 @@ namespace BlightfallPopsDesktop {
                     // Swings omit the three spell fields; normalize the prefix for the shared suffix reader.
                     f.InsertRange(9,new[]{"0","Melee","0x1"});
                     long amount=Amount(f);beast.Melee+=amount;
-                    beast.MeleeHits.Add(new Hit{Kind="ME",Amount=amount,Overkill=Overkill(f),Target=F(f,6),Crit=Crit(f)});Notify();return;
+                    beast.MeleeHits.Add(new Hit{Kind="ME",SpellId="0",SpellName="Melee",Amount=amount,Overkill=Overkill(f),Target=F(f,6),Crit=Crit(f)});Notify();return;
                 }
             }
             if(kind=="SPELL_DAMAGE"&&(spell=="434574"||spell=="434246")) {
@@ -220,7 +220,7 @@ namespace BlightfallPopsDesktop {
                 else if(source==Guid)beast=recentBeast;
                 if(beast!=null&&time>=beast.Time){long amount=Amount(f);
                     if(spell=="434574")beast.Corrupted+=amount;else{beast.Life+=amount;beast.Exploded=true;}
-                    beast.Hits.Add(new Hit{Kind=spell=="434574"?"CB":"BiL",Amount=amount,Overkill=Overkill(f),Target=F(f,6),Crit=Crit(f)});Notify();}
+                    beast.Hits.Add(new Hit{Kind=spell=="434574"?"CB":"BiL",SpellId=spell,SpellName=F(f,10),Amount=amount,Overkill=Overkill(f),Target=F(f,6),Crit=Crit(f)});Notify();}
             }
             if(encounter=="" && (kind=="SPELL_DAMAGE"||kind=="SPELL_PERIODIC_DAMAGE"||kind=="SWING_DAMAGE"||kind=="RANGE_DAMAGE"||kind=="SPELL_MISSED"||kind=="SWING_MISSED")
                 &&OwnFlags(F(f,3))&&source.StartsWith("Player-")&&(dest.StartsWith("Creature-")||dest.StartsWith("Vehicle-")))UpdatePull(time);
@@ -285,7 +285,7 @@ namespace BlightfallPopsDesktop {
             if(spell!="1241171"&&spell!="1241167")return;
             long damage=Amount(f);string plague=spell=="1241171"?"DP":"VP";
             if(plague=="DP")eruption.Dread+=damage;else eruption.Virulent+=damage;
-            var hit=new Hit{Kind=plague,Amount=damage,Overkill=Overkill(f),Target=F(f,6),TargetGuid=dest,Crit=Crit(f)};
+            var hit=new Hit{Kind=plague,SpellId=spell,SpellName=F(f,10),Amount=damage,Overkill=Overkill(f),Target=F(f,6),TargetGuid=dest,Crit=Crit(f)};
             SnapshotHitDebuffs(hit,dest);eruption.Hits.Add(hit);
             if(source!=Guid||pending==null)Notify();
         }
