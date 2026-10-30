@@ -346,7 +346,7 @@ namespace BlightfallPopsDesktop {
             };
             var effectName=BuilderText("");var effectSpell=BuilderText("");
             var effectType=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White};
-            effectType.Items.AddRange(new object[]{"Buff","Debuff"});
+            effectType.Items.AddRange(new object[]{"Buff","Debuff","Damage"});
             var condition=new ComboBox{DropDownStyle=ComboBoxStyle.DropDownList,BackColor=Color.FromArgb(39,44,51),ForeColor=Color.White};
             condition.Items.AddRange(new object[]{"Active at event","Applied by event","Detected in event window","Removed in event window"});
             var showCompact=new CheckBox{Text="Show in Compact",Checked=false,AutoSize=true,ForeColor=Color.White,BackColor=Color.FromArgb(25,29,34)};
@@ -627,7 +627,8 @@ namespace BlightfallPopsDesktop {
                 if(selected>0&&selected<=definitions.Count)definitions[selected-1]=card;else definitions.Add(card);
                 try{WriteCustomCards(definitions);fillPresets();presets.SelectedIndex=definitions.IndexOf(card)+1;refreshEffectTemplates();
                     if((card.SpellId=="1271967"||card.SpellId=="1271974"))foreach(var effect in card.Effects){
-                        tracker.WatchedAuras[effect.SpellId]=effect.Type;customAuraInfo[effect.SpellId]=effect;
+                        if(effect.Type=="Damage")tracker.WatchedDamage[effect.SpellId]=effect.Name;
+                        else {tracker.WatchedAuras[effect.SpellId]=effect.Type;customAuraInfo[effect.SpellId]=effect;}
                     }
                     statusLabel.Text="Saved. Linked aura tracking applies to subsequent Blightfall casts. Re-scan the log for older events.";
                 }catch(Exception ex){MessageBox.Show(editor,ex.Message,"Unable to save",MessageBoxButtons.OK,MessageBoxIcon.Error);}

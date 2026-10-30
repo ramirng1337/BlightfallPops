@@ -56,6 +56,8 @@ namespace BlightfallPopsDesktop {
         private sealed class AuraState { public bool Active; public int Stacks; public bool HasDose; }
         private readonly Dictionary<string,AuraState> auraStates=new Dictionary<string,AuraState>(StringComparer.Ordinal);
         public readonly Dictionary<string,string> WatchedAuras=new Dictionary<string,string>(StringComparer.Ordinal);
+        // Optional damage spells tracked within the existing Blightfall window.
+        public readonly Dictionary<string,string> WatchedDamage=new Dictionary<string,string>(StringComparer.Ordinal);
         private static string AuraKey(string target,string spell){return target+"|"+spell;}
         private void RecordAura(string kind,string spell,string target,List<string> fields){
             if(!WatchedAuras.ContainsKey(spell)||String.IsNullOrEmpty(target))return;
@@ -282,9 +284,11 @@ namespace BlightfallPopsDesktop {
             if(eruption==null)return;
             double ms=(time-eruption.Time).TotalMilliseconds;
             if(ms<0||ms>WindowMs)return;
-            if(spell!="1241171"&&spell!="1241167")return;
-            long damage=Amount(f);string plague=spell=="1241171"?"DP":"VP";
-            if(plague=="DP")eruption.Dread+=damage;else eruption.Virulent+=damage;
+            bool plagueHit=spell=="1241171"||spell=="1241167";
+            string watchedName=null;
+            if(!plagueHit&&!WatchedDamage.TryGetValue(spell,out watchedName))return;
+            long damage=Amount(f);string plague=spell=="1241171"?"DP":spell=="1241167"?"VP":"DM";
+            if(plague=="DP")eruption.Dread+=damage;else if(plague=="VP")eruption.Virulent+=damage;
             var hit=new Hit{Kind=plague,SpellId=spell,SpellName=F(f,10),Amount=damage,Overkill=Overkill(f),Target=F(f,6),TargetGuid=dest,Crit=Crit(f)};
             SnapshotHitDebuffs(hit,dest);eruption.Hits.Add(hit);
             if(source!=Guid||pending==null)Notify();

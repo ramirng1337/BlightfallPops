@@ -151,7 +151,7 @@ namespace BlightfallPopsDesktop {
             };Move+=delegate {if(Visible&&WindowState==FormWindowState.Normal)Save();};
             FormClosing+=delegate {EndResizePreview(false);Save();poll.Stop();toolTip.Dispose();if(artwork!=null)artwork.Dispose();foreach(var image in spellIcons.Values)image.Dispose();foreach(var font in labelFonts.Values)font.Dispose();};
             try{foreach(var custom in ReadCustomCards())if((custom.SpellId=="1271967"||custom.SpellId=="1271974"))foreach(var effect in custom.Effects)
-                if(!String.IsNullOrWhiteSpace(effect.SpellId)){tracker.WatchedAuras[effect.SpellId.Trim()]=effect.Type;customAuraInfo[effect.SpellId.Trim()]=effect;}}catch{}
+                if(!String.IsNullOrWhiteSpace(effect.SpellId)){if(effect.Type=="Damage")tracker.WatchedDamage[effect.SpellId.Trim()]=effect.Name;else {tracker.WatchedAuras[effect.SpellId.Trim()]=effect.Type;customAuraInfo[effect.SpellId.Trim()]=effect;}}}catch{}
             tracker.WindowMs=settings.WindowMs;tracker.TrackAllPlayers=true;tracker.Changed+=delegate {dirty=true;};
             poll.Interval=350;poll.Tick+=delegate {if(resizeStart.HasValue)return;
                 if(scanningFullLog){ContinueFullLogScan();UpdateLogButton();return;}
