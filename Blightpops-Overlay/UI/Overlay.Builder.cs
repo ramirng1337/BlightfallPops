@@ -48,10 +48,23 @@ namespace BlightfallPopsDesktop {
         }
         // Uniform caption buttons for every borderless tool window.
         private static Button CaptionButton(string glyph, Color foreground, Color background){
-            var button=new Button{Text=glyph,Width=42,Height=32,Margin=Padding.Empty,
+            var button=new Button{Text="",Width=42,Height=32,Margin=Padding.Empty,
                 Padding=Padding.Empty,FlatStyle=FlatStyle.Flat,BackColor=background,
-                ForeColor=foreground,Font=new Font("Segoe UI Symbol",11,FontStyle.Regular),
-                TextAlign=ContentAlignment.MiddleCenter,TabStop=false,UseVisualStyleBackColor=false};
+                ForeColor=foreground,TabStop=false,UseVisualStyleBackColor=false};
+            // Match the main overlay's 2.2px caption icon strokes.
+            button.Paint+=delegate(object sender,PaintEventArgs e){
+                e.Graphics.SmoothingMode=System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                using(var pen=new Pen(foreground,2.2f)){
+                    int x=(button.ClientSize.Width-31)/2;
+                    int y=(button.ClientSize.Height-31)/2;
+                    if(glyph=="×"){
+                        e.Graphics.DrawLine(pen,x+9,y+8,x+22,y+21);
+                        e.Graphics.DrawLine(pen,x+22,y+8,x+9,y+21);
+                    }else if(glyph=="−"){
+                        e.Graphics.DrawLine(pen,x+8,y+20,x+23,y+20);
+                    }
+                }
+            };
             button.FlatAppearance.BorderSize=0;
             button.FlatAppearance.MouseOverBackColor=Color.FromArgb(49,51,54);
             button.FlatAppearance.MouseDownBackColor=Color.FromArgb(65,69,76);
