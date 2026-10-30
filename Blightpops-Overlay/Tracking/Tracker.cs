@@ -40,7 +40,7 @@ namespace BlightfallPopsDesktop {
                 foreach(var rule in CustomRules) {
                     if(!MatchSpell(rule.Spell,spell,spellName))continue;
                     string key=source+"|"+rule.Spell;
-                    var entry=new Entry{Custom=true,CustomName=rule.Name,Time=time,Sequence=++nextSequence,Segment=Segment,
+                    var entry=new Entry{Custom=true,CustomName=rule.Name,CustomSpell=rule.Spell,Time=time,Sequence=++nextSequence,Segment=Segment,
                         PlayerGuid=source,PlayerName=player,Number=++customNumber};
                     CustomEntries.Add(entry);customRecent[key]=entry;customEntryRules[key]=rule;
                 }

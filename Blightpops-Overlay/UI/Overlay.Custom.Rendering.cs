@@ -20,6 +20,18 @@ namespace BlightfallPopsDesktop {
             };
             return icon;
         }
+        // Resolve saved artwork by the custom event's configured trigger spell.
+        private CustomCard CustomDefinition(Entry entry) {
+            foreach(var definition in ReadCustomCards())
+                if(definition!=null&&String.Equals((definition.SpellId??"").Trim(),(entry.CustomSpell??"").Trim(),StringComparison.OrdinalIgnoreCase))
+                    return definition;
+            return null;
+        }
+        private PictureBox CustomArtwork(string path,int x,int y,int size) {
+            var slot=CustomPlaceholder(x,y,size);
+            slot.Image=ReadBuilderImage(path);
+            return slot;
+        }
         // Keep custom card layout independent from built-in Blightfall cards.
         private Dictionary<string,CustomDamageSummary> CustomDamageGroups(Entry entry) {
             var totals=new Dictionary<string,CustomDamageSummary>(StringComparer.Ordinal);
@@ -40,14 +52,15 @@ namespace BlightfallPopsDesktop {
         private string CustomCardSignature(Entry entry,int width) {
             long total=0;foreach(var hit in entry.Hits)total+=hit.Amount;
             return width+"|"+ShowMiniCards+"|"+settings.TextSize+"|"+settings.CompactNumbers+
-                "|"+entry.Hits.Count+"|"+total+"|"+entry.CustomName+"|"+CustomIsExpanded(entry);
+                "|"+entry.Hits.Count+"|"+total+"|"+entry.CustomName+"|"+CustomIsExpanded(entry)+"|"+(CustomDefinition(entry)==null?"":CustomDefinition(entry).IconPath);
         }
         private void RenderCustomCard(Panel card,Entry entry) {
             card.Height=CustomCardHeight(entry);
             card.Controls.Add(new Panel{Left=0,Top=0,Width=3,Height=card.Height,BackColor=green});
             string title=(String.IsNullOrWhiteSpace(entry.CustomName)?"Custom event":entry.CustomName)+
                 "  #"+entry.Number+"  "+entry.Time.ToString("HH:mm:ss");
-            var eventIcon=CustomPlaceholder(10,10,42);
+            var definition=CustomDefinition(entry);
+            var eventIcon=CustomArtwork(definition==null?null:definition.IconPath,10,10,42);
             card.Controls.Add(eventIcon);
             var heading=Label((CustomIsExpanded(entry)?"▾  ":"▸  ")+title,Color.White,60,8,Math.Max(80,card.Width-72),true);
             heading.Cursor=Cursors.Hand;
@@ -64,7 +77,15 @@ namespace BlightfallPopsDesktop {
                 var line=new BufferedPanel{Left=8,Top=y,Width=Math.Max(80,card.Width-16),Height=32,BackColor=Color.FromArgb(23,28,33)};
                 string name=String.IsNullOrWhiteSpace(hit.SpellName)?hit.SpellId:hit.SpellName;
                 string target=String.IsNullOrWhiteSpace(hit.Target)?"Unknown target":hit.Target;
-                line.Controls.Add(CustomPlaceholder(4,3,26));
+                string effectIcon=null;
+                if(definition!=null&&definition.Effects!=null)
+                    foreach(var effect in definition.Effects)
+                        if(effect!=null&&effect.Type=="Damage"&&
+                           (String.Equals(effect.SpellId,hit.SpellId,StringComparison.OrdinalIgnoreCase)||
+                            String.Equals(effect.SpellId,hit.SpellName,StringComparison.OrdinalIgnoreCase))) {
+                            effectIcon=effect.IconPath;break;
+                        }
+                line.Controls.Add(CustomArtwork(effectIcon,4,3,26));
                 var amount=Label(Format(hit.Amount),hit.Crit?Color.Gold:dim,36,6,80);
                 var outcome=Label(hit.Crit?"Crit":"Hit",hit.Crit?Color.Gold:dim,122,6,44,true);
                 var details=Label(name+"  •  "+target,dim,173,6,Math.Max(30,line.Width-182));

@@ -22,7 +22,7 @@ namespace BlightfallPopsDesktop {
     internal sealed class Entry {
         public readonly List<AuraSnapshot> AuraSnapshots=new List<AuraSnapshot>();
         public bool Beast, Custom, DOpen, VOpen, MOpen, Exploded, BlightfallBefore;
-        public string CustomName;
+        public string CustomName,CustomSpell;
         public bool? Scythe, SoulReaper;
         public int SoulReaperTargets;
         public int Number;
