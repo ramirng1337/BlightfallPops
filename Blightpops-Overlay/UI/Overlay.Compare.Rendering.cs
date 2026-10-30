@@ -33,7 +33,7 @@ namespace BlightfallPopsDesktop {
                 while(panel.Controls.Count>0){Control old=panel.Controls[0];panel.Controls.RemoveAt(0);old.Dispose();}
                 var events=new List<Entry>();foreach(var e in source.Entries)if(e.PlayerGuid==guid&&((!e.Beast&&showBlightfall)||(e.Beast&&showBeasts)))events.Add(e);
                 events.Sort(delegate(Entry a,Entry b){int t=a.Time.CompareTo(b.Time);return t!=0?t:a.Sequence.CompareTo(b.Sequence);});
-                long dread=0,virulent=0;int hits=0;foreach(var e in events){dread+=e.Beast?e.Corrupted:e.Dread;virulent+=e.Beast?e.Life:e.Virulent;hits+=e.Hits.Count;}
+                long dread=0,virulent=0;int hits=0;foreach(var e in events){dread+=EventMetrics.First(e);virulent+=EventMetrics.Second(e);hits+=e.Hits.Count;}
                 var header=new Panel{Width=width,Height=77,BackColor=Color.FromArgb(28,34,37),Margin=new Padding(2,2,2,8)};
                 header.Controls.Add(new Label{Text=names[guid],ForeColor=Color.White,Font=new Font("Segoe UI",12,FontStyle.Bold),
                     Bounds=new Rectangle(12,8,width-24,27),AutoEllipsis=true});
@@ -70,15 +70,15 @@ namespace BlightfallPopsDesktop {
                     var count=Label(e.Hits.Count+(e.Hits.Count==1?" hit":" hits"),dim,
                         secondX-3,3,Math.Max(40,totalX-secondX));
                     card.Controls.Add(count);
-                    var total=Label(Format(e.Beast?e.Corrupted+e.Life:e.Dread+e.Virulent),green,totalX,1,
+                    var total=Label(Format(EventMetrics.Total(e)),green,totalX,1,
                         Math.Max(35,width-totalX-8),true);
                     total.TextAlign=ContentAlignment.TopRight;card.Controls.Add(total);
                     var dp=SpellIcon(e.Beast?"CB":"DP",55,29,iconSize);
                     var vp=SpellIcon(e.Beast?"BiL":"VP",secondX,29,iconSize);
                     card.Controls.Add(dp);card.Controls.Add(vp);
-                    var dpValue=Label(Format(e.Beast?e.Corrupted:e.Dread),e.Hits.Exists(h=>h.Kind==(e.Beast?"CB":"DP")&&h.Crit)?Color.Gold:dim,
+                    var dpValue=Label(Format(EventMetrics.First(e)),e.Hits.Exists(h=>h.Kind==(e.Beast?"CB":"DP")&&h.Crit)?Color.Gold:dim,
                         55+iconSize+4,28,Math.Max(30,secondX-55-iconSize-8));
-                    var vpValue=Label(Format(e.Beast?e.Life:e.Virulent),e.Beast?dim:VirulentDamageColor(e),
+                    var vpValue=Label(Format(EventMetrics.Second(e)),e.Beast?dim:VirulentDamageColor(e),
                         secondX+iconSize+4,28,Math.Max(16,(statusCount+customSlots>0?statusX:width-7)-secondX-iconSize-8));
                     card.Controls.Add(dpValue);card.Controls.Add(vpValue);
                     // Use the same status icons, activity indicators, and tooltips as main compact cards.

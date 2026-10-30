@@ -177,7 +177,7 @@ namespace BlightfallPopsDesktop {
             foreach(var entry in tracker.Entries){
                 if(!PlayerVisible(entry)||entry.Beast&&!settings.ShowBeasts)continue;
                 string title=entry.Beast?"Beast #"+entry.Number:entry.Time.ToString("HH:mm:ss")+" #"+entry.Number;
-                string total=Format(entry.Beast?entry.Corrupted+entry.Life:entry.Dread+entry.Virulent);
+                string total=Format(EventMetrics.Total(entry));
                 titleWidth=Math.Max(titleWidth,TextRenderer.MeasureText(title,font).Width+4);
                 totalWidth=Math.Max(totalWidth,TextRenderer.MeasureText(total,font).Width+4);
             }
@@ -192,7 +192,7 @@ namespace BlightfallPopsDesktop {
             var eventIcon=SpellIcon(entry.Beast?"BB":"BF",6,g.DamageTop+(secondTop+rowHeight-g.DamageTop-42)/2,42);
             toolTip.SetToolTip(eventIcon,entry.Segment??"");card.Controls.Add(eventIcon);
             string title=entry.Beast?"Beast #"+entry.Number:entry.Time.ToString("HH:mm:ss")+" #"+entry.Number;
-            string total=Format(entry.Beast?entry.Corrupted+entry.Life:entry.Dread+entry.Virulent);
+            string total=Format(EventMetrics.Total(entry));
             // Every event uses the same heading font and column boundaries.
             var headingFont=SizedFont(settings.TextSize,true);
             var titleLabel=Label(title,Color.White,6,3,detailTitleWidth,true);titleLabel.Font=headingFont;
@@ -204,7 +204,7 @@ namespace BlightfallPopsDesktop {
             segment.Height=titleLabel.Height=totalLabel.Height=TextRenderer.MeasureText("Ag",headingFont).Height+2;
             toolTip.SetToolTip(segment,entry.Segment??"");card.Controls.Add(segment);
             string first=entry.Beast?"CB":"DP",second=entry.Beast?"BiL":"VP";
-            long firstValue=entry.Beast?entry.Corrupted:entry.Dread,secondValue=entry.Beast?entry.Life:entry.Virulent;
+            long firstValue=EventMetrics.First(entry),secondValue=EventMetrics.Second(entry);
             var firstIcon=SpellIcon(first,55,g.DamageTop,g.IconSize);
             var secondIcon=SpellIcon(second,55,secondTop,g.IconSize);
             int amountX=55+g.IconSize+4,amountWidth=g.SecondX-amountX-8;
@@ -259,7 +259,7 @@ namespace BlightfallPopsDesktop {
             int headingTop=1;
             card.Controls.Add(new Panel{Left=0,Top=0,Width=3,Height=baseHeight,BackColor=entry.Beast?red:green});
             string title=entry.Beast?"Beast #"+entry.Number:"#"+entry.Number+"  "+entry.Time.ToString("HH:mm:ss");
-            string total=Format(entry.Beast?entry.Corrupted+entry.Life:entry.Dread+entry.Virulent);
+            string total=Format(EventMetrics.Total(entry));
             string hits=entry.Hits.Count+(entry.Hits.Count==1?" hit":" hits");
             int iconSize=Math.Max(18,Math.Min(23,settings.IconSize));
             // Align the first icon to the title and the second icon to the hit count above it.
@@ -288,7 +288,7 @@ namespace BlightfallPopsDesktop {
                 countLabel.Height=TextRenderer.MeasureText("Ag",countLabel.Font).Height+2;card.Controls.Add(countLabel);
             }
             string first=entry.Beast?"CB":"DP",second=entry.Beast?"BiL":"VP";
-            long firstValue=entry.Beast?entry.Corrupted:entry.Dread,secondValue=entry.Beast?entry.Life:entry.Virulent;
+            long firstValue=EventMetrics.First(entry),secondValue=EventMetrics.Second(entry);
             bool showExtra=statusCount>0;
             var firstIcon=SpellIcon(first,firstX,damageTop,iconSize);
             var secondIcon=SpellIcon(second,secondX,damageTop,iconSize);
