@@ -573,7 +573,8 @@ namespace BlightfallPopsDesktop {
             if(!refreshingCards){
                 int width=Math.Max(260,cards.ClientSize.Width-7);
                 foreach(var state in visibleCards){
-                    if(state.Card.Visible&&state.Signature!=CardSignature(state.Entry,width)){
+                    if(state.Card.Visible&&state.Signature!=(state.Entry.Custom
+                        ?CustomCardSignature(state.Entry,width):CardSignature(state.Entry,width))){
                         RefreshCards();break;
                     }
                 }
