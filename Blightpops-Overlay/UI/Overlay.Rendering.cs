@@ -392,7 +392,6 @@ namespace BlightfallPopsDesktop {
                     y+=predictedHeight+(ShowMiniCards?4:5);continue;
                 }
                 card.SuspendLayout();
-                if(entry.Custom)card.Click=null;
                 var oldControls=new List<Control>();foreach(Control control in card.Controls)oldControls.Add(control);
                 card.Controls.Clear();foreach(var control in oldControls)control.Dispose();state.Rows.Clear();
                 card.Width=width;state.Signature=signature;
