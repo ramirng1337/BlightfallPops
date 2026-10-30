@@ -12,6 +12,7 @@ using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
 namespace BlightfallPopsDesktop {
+    // Persisted user preferences.
     internal sealed class Settings {
         public int Width=500, Height=390, X=int.MinValue, Y=int.MinValue, WindowMs=1200, IconSize=26, TextSize=10;
         public bool Locked=false, AlwaysOnTop=true, WatchLog=true, ShowBeasts=true, ShowBeastBlightfall=true, ShowSoulReaper=false, ShowScythe=true, ShowOverkill=false, CompactNumbers=true, Collapsed=false, GroupByEventType=false, MiniCards=true;

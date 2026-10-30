@@ -12,6 +12,7 @@ using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
 namespace BlightfallPopsDesktop {
+    // Combat log parsing and event tracking.
     internal sealed class Tracker {
         public readonly List<Entry> Entries=new List<Entry>();
         public readonly Dictionary<string,CombatPlayer> Players=new Dictionary<string,CombatPlayer>(StringComparer.Ordinal);
@@ -100,6 +101,7 @@ namespace BlightfallPopsDesktop {
         private static readonly Regex prefix=new Regex(@"^\s*(\d{1,2}[/.]\d{1,2}[/.]\d{4} \d\d:\d\d:\d\d\.\d+)(?:[+-]\d+)?\s{2,}(.*)$",RegexOptions.Compiled);
         private static readonly string[] logDates={"M/d/yyyy HH:mm:ss.FFFFFFF","d.M.yyyy HH:mm:ss.FFFFFFF"};
         private void Notify(){if(Changed!=null)Changed();}
+        // Reset session tracking.
         public void Reset(long at=0) {
             Entries.Clear();Players.Clear();otherPending.Clear();otherRecent.Clear();otherCastNumbers.Clear();pending=null;recentBlightfall=null;recentBeast=null;beasts.Clear();attempts.Clear();auraStates.Clear();scythe.Clear();soulReaper.Clear();
             castNumber=beastNumber=pullNumber=0;nextSequence=0;Guid=Player=Segment=encounter=remainder="";
@@ -119,6 +121,7 @@ namespace BlightfallPopsDesktop {
             }
             if(changed)Notify();
         }
+        // Read new log data only.
         public void Tick(string path) {
             if(!File.Exists(path))return;
             var file=new FileInfo(path);

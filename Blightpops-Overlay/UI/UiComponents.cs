@@ -12,6 +12,7 @@ using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
 namespace BlightfallPopsDesktop {
+    // Resize preview overlay.
     internal sealed class ResizeOutline : Form {
         public ResizeOutline(){
             FormBorderStyle=FormBorderStyle.None;ShowInTaskbar=false;StartPosition=FormStartPosition.Manual;
@@ -27,6 +28,7 @@ namespace BlightfallPopsDesktop {
             base.WndProc(ref message);
         }
     }
+    // Flicker-free panel drawing.
     internal sealed class BufferedPanel : Panel {
         public BufferedPanel(){DoubleBuffered=true;ResizeRedraw=true;}
     }

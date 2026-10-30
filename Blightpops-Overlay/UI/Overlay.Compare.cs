@@ -12,7 +12,9 @@ using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
 namespace BlightfallPopsDesktop {
+    // Compare players and combat logs.
     internal sealed partial class Overlay {
+        // Independent comparison pane.
         private sealed class CompareColumn {
             public Panel View, Track, Thumb;
             public FlowLayoutPanel Content;
@@ -107,6 +109,7 @@ namespace BlightfallPopsDesktop {
                 IconPath=source.IconPath, Condition=source.Condition,
                 ShowCompact=source.ShowCompact, ShowDetailed=source.ShowDetailed };
         }
+        // Set up split comparison view.
         private void ShowCompareWindow(){
             var identities=CompareIdentities(tracker);
             // A single player can still compare against another combat log.

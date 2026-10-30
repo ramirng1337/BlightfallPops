@@ -19,6 +19,7 @@ namespace BlightfallPopsDesktop {
         public Version Version;
     }
 
+    // Download and apply application updates.
     internal static class Updater {
         private const string ApiUrl="https://api.github.com/repos/ramirng1337/BlightfallPops/releases/latest";
         private const string AssetName="BlightfallPops.zip";

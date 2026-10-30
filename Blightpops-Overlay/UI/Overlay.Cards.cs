@@ -12,7 +12,9 @@ using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
 namespace BlightfallPopsDesktop {
+    // Card state, caching and layout.
     internal sealed partial class Overlay {
+        // Cached controls for one card.
         private sealed class CardState {
             public Entry Entry;public Panel Card;public string Signature,First;
             public int DetailsTop,MinimumHeight;public Label FirstLabel,SecondLabel;

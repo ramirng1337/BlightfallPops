@@ -12,7 +12,9 @@ using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
 namespace BlightfallPopsDesktop {
+    // Custom event card editor.
     internal sealed partial class Overlay {
+        // Saved custom event definition.
         private sealed class CustomCard {
             public string Name="Custom event", SpellId="", IconPath="";
             public List<CustomEffect> Effects=new List<CustomEffect>();
@@ -198,6 +200,7 @@ namespace BlightfallPopsDesktop {
             }
             return bitmap;
         }
+        // Open custom card editor.
         private void ShowEventCardBuilder(){
             var definitions=ReadCustomCards();
             // Offer the existing built-in event types as editable presets, without

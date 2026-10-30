@@ -12,10 +12,13 @@ using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
 namespace BlightfallPopsDesktop {
+    // Damage hit and target debuffs.
     internal sealed class Hit { public string Kind, Target, TargetGuid; public long Amount, Overkill; public bool Crit; public readonly List<AuraSnapshot> Debuffs=new List<AuraSnapshot>(); }
 
+    // Aura state at event time.
     internal sealed class AuraSnapshot { public string Name, SpellId, IconPath; public bool? Active; public int Stacks; public bool HasDose; }
 
+    // Tracked cast and damage event.
     internal sealed class Entry {
         public readonly List<AuraSnapshot> AuraSnapshots=new List<AuraSnapshot>();
         public bool Beast, DOpen, VOpen, MOpen, Exploded, BlightfallBefore;
@@ -33,6 +36,7 @@ namespace BlightfallPopsDesktop {
         public readonly List<Hit> MeleeHits = new List<Hit>();
     }
 
+    // Player identity by GUID.
     internal sealed class CombatPlayer {
         public string Guid, Name;
         public DateTime FirstSeen, LastSeen;

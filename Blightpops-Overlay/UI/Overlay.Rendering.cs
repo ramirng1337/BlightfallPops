@@ -12,7 +12,9 @@ using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
 namespace BlightfallPopsDesktop {
+    // Event cards, damage rows and auras.
     internal sealed partial class Overlay {
+        // Cache built-in WoW icons.
         private void LoadSpellIcons(){
             var files=new Dictionary<string,string>{
                 {"BF","inv_nullstone_shadow.jpg"},{"DP","inv12_ability_deathknight_empowereddreadplague.jpg"},
@@ -395,6 +397,7 @@ namespace BlightfallPopsDesktop {
             AddCompactAuras(card,entry,damageTop,iconSize,compactAuraLeft,showExtra?statusX-4:card.Width-8);
             ConfigureDetails(card,entry,first,baseHeight+2,baseHeight,firstLabel,secondLabel);
         }
+        // Reuse cards to reduce UI rebuilds.
         private void RefreshCards(bool followLatest=false){if(cards.IsDisposed)return;
             int oldScroll=scrollPixels;
             bool wasAtBottom=oldScroll>=Math.Max(0,totalContentHeight-cards.ClientSize.Height)-2;

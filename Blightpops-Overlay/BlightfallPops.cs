@@ -12,6 +12,7 @@ using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
 namespace BlightfallPopsDesktop {
+    // Application entry point.
     internal static class Program {
         [STAThread] private static void Main(string[] args) {
             bool framed=Array.IndexOf(args,"--framed")>=0;

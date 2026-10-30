@@ -12,6 +12,7 @@ using System.Text.RegularExpressions;
 using System.Windows.Forms;
 
 namespace BlightfallPopsDesktop {
+    // Main window and user controls.
     internal sealed partial class Overlay : Form {
         private readonly Settings settings=Settings.Load();
         private readonly Tracker tracker=new Tracker();
